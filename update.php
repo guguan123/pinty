@@ -34,4 +34,4 @@ try {
     http_response_code(500);
     die("数据库修复失败: " . $e->getMessage());
 }
-?>
+

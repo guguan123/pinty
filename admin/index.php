@@ -1,7 +1,7 @@
 <?php
 session_start();
 // 如果 config.php 不存在，则重定向到安装程序
-if (!file_exists('./../config.php')) {
+if (!file_exists('../config.php')) {
     header('Location: setup.php');
     exit;
 }
@@ -12,7 +12,7 @@ if (isset($_SESSION['loggedin']) && $_SESSION['loggedin'] === true) {
     exit;
 }
 
-require_once __DIR__ . './../config.php';
+require_once __DIR__ . '../config.php';
 $error_message = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

@@ -1,8 +1,6 @@
 <?php
 // api.php - Provides monitoring data to the frontend
 
-ini_set('display_errors', 0);
-error_reporting(0); // 彻底禁用错误报告，防止任何意外输出破坏JSON
 header('Content-Type: application/json');
 require_once __DIR__ . '/config.php';
 
@@ -110,8 +108,5 @@ try {
     http_response_code(500);
     // 在响应中返回具体的错误信息，方便调试
     echo json_encode(['error' => $e->getMessage()]);
-    exit;
 }
-?>
-
 
