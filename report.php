@@ -5,6 +5,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 header('Content-Type: application/json');
+
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/config.php';
 
@@ -29,7 +30,7 @@ if (empty($server_id) || empty($secret)) {
 }
 
 try {
-    $db = Database::getInstance($db_config);  // 用封装的Database
+    $db = Database::getInstance($db_config);
     $pdo = $db->getPdo();
     $serverRepo = new ServerRepository($db_config);
 
@@ -41,6 +42,7 @@ try {
     if ($validated['code'] !== 200) {
         http_response_code($validated['code']);
         echo json_encode(['error' => $validated['msg']]);
+        exit;
     }
 
     $pdo->beginTransaction();
@@ -88,5 +90,5 @@ try {
     if (!headers_sent()) {
         http_response_code(500);
     }
-    echo json_encode(['error' => 'An internal server error occurred.']);
+    echo json_encode(['error' => $e->getMessage()]);
 }

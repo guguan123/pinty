@@ -1,3 +1,5 @@
+-- MySQL.sql
+
 -- 1. 服务器静态资料
 CREATE TABLE IF NOT EXISTS servers (
     id                VARCHAR(255) PRIMARY KEY,
@@ -54,6 +56,13 @@ CREATE TABLE IF NOT EXISTS outages (
 
 -- 5. 系统配置
 CREATE TABLE IF NOT EXISTS options (
-    option_name   VARCHAR(255) PRIMARY KEY,  -- 注意：key 是 MySQL 保留字，改名 kkey
+    option_name   VARCHAR(255) PRIMARY KEY,
     option_value TEXT
+);
+
+-- 6. 用户表（管理员登录）
+CREATE TABLE IF NOT EXISTS users (
+    id       INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL
 );

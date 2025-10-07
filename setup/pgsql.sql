@@ -54,6 +54,13 @@ CREATE INDEX IF NOT EXISTS idx_outages_server_start ON outages(server_id, start_
 
 -- 系统配置
 CREATE TABLE IF NOT EXISTS settings (
-    key   VARCHAR(255) PRIMARY KEY,
-    value TEXT
+    option_name   VARCHAR(255) PRIMARY KEY,
+    option_value TEXT
+);
+
+-- 用户表（管理员登录）
+CREATE TABLE IF NOT EXISTS users (
+    id       SERIAL PRIMARY KEY,
+    username VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL
 );

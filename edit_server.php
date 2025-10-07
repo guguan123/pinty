@@ -42,7 +42,6 @@ try {
     $id = $_POST['id'] ?? '';
     $name = $_POST['name'] ?? '';
     $ip = $_POST['ip'] ?? '';
-    $port = filter_var($_POST['port'] ?? 0, FILTER_VALIDATE_INT);
     $longitude = filter_var($_POST['longitude'] ?? 0, FILTER_VALIDATE_FLOAT);
     $latitude = filter_var($_POST['latitude'] ?? 0, FILTER_VALIDATE_FLOAT);
     $intro = $_POST['intro'] ?? '';
@@ -81,7 +80,6 @@ try {
     $stmt->bindParam(':id', $id);
     $stmt->bindParam(':name', $name);
     $stmt->bindParam(':ip', $ip);
-    $stmt->bindParam(':port', $port, PDO::PARAM_INT);
     $stmt->bindParam(':longitude', $longitude);
     $stmt->bindParam(':latitude', $latitude);
     $stmt->bindParam(':intro', $intro);
