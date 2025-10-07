@@ -1,5 +1,5 @@
 <?php
-// src/Repositories/OutagesRepository.php - 修复版：修正SQL和变量错误
+// src/Repositories/OutagesRepository.php
 
 namespace GuGuan123\Pinty\Repositories;
 
@@ -13,18 +13,21 @@ class OutagesRepository {
     }
 
     /**
-     * 获取最近的故障记录，按开始时间降序排序。
+     * 获取最近的故障记录，按开始时间降序排序，附带服务器名称和国家码。
      * @param int $limit 限制记录数，默认50
-     * @return array 故障记录数组
+     * @return array 故障记录数组，每个记录包含服务器名称和国家码
      */
     public function getRecentOutages(int $limit = 50) {
-        $sql = "SELECT * FROM outages ORDER BY start_time DESC LIMIT {$limit}";  // 修正SQL：outages表，无server_id过滤
+        $sql = "SELECT o.*, s.name AS server_name, s.country_code 
+                FROM outages o 
+                JOIN servers s ON o.server_id = s.id 
+                ORDER BY o.start_time DESC LIMIT {$limit}";
         $outages = $this->db->fetchAll($sql);
 
         // 类型转换：时间戳转为int
-        return array_map(function(int $outage) {
-            $outage['start_time'] = $outage['start_time'];
-            $outage['end_time'] = $outage['end_time'] ? $outage['end_time'] : null;
+        return array_map(function($outage) {
+            $outage['start_time'] = (int)$outage['start_time'];
+            $outage['end_time'] = $outage['end_time'] ? (int)$outage['end_time'] : null;
             return $outage;
         }, $outages);
     }
@@ -34,7 +37,7 @@ class OutagesRepository {
      * @param int $serverId 服务器ID
      * @param string $title 标题，如'服务器掉线'
      * @param string $content 内容描述
-     * @return bool 创建成功返回true
+     * @return int|false 创建成功返回故障记录ID，失败返回false
      */
     public function createOutage($serverId, $title, $content) {
         $sql = "INSERT INTO outages (server_id, start_time, title, content) VALUES (:server_id, :start_time, :title, :content)";
@@ -44,7 +47,10 @@ class OutagesRepository {
             ':title' => $title,
             ':content' => $content
         ];
-        return $this->db->execute($sql, $params) > 0;
+        if ($this->db->execute($sql, $params) > 0) {
+            return $this->db->getPdo()->lastInsertId();
+        }
+        return false;
     }
 
     /**
@@ -55,7 +61,7 @@ class OutagesRepository {
      */
     public function updateOutageEndTime($outageId, $endTime) {
         $sql = "UPDATE outages SET end_time = :end_time WHERE id = :id AND end_time IS NULL";
-        $params = [':end_time' => $endTime, ':id' => $outageId];
+        $params = [':end_time' => $endTime ?? time(), ':id' => $outageId];
         return $this->db->execute($sql, $params) > 0;
     }
 
