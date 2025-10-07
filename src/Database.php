@@ -1,5 +1,5 @@
 <?php
-// src/Database.php - 更新版：添加MySQL支持
+// src/Database.php
 
 namespace GuGuan123\Pinty;
 
@@ -11,7 +11,7 @@ class Database {
     private function __construct($config) {
         $this->config = $config;
         $this->pdo = $this->createConnection();
-        $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
     }
 
     public static function getInstance($config) {
@@ -26,18 +26,18 @@ class Database {
         if ($type === 'pgsql') {
             $cfg = $this->config['pgsql'];
             $dsn = "pgsql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['dbname']}";
-            return new PDO($dsn, $cfg['user'], $cfg['password']);
+            return new \PDO($dsn, $cfg['user'], $cfg['password']);
         } elseif ($type === 'mysql') {
             $cfg = $this->config['mysql'];
             $dsn = "mysql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['dbname']};charset=utf8mb4";
-            $pdo = new PDO($dsn, $cfg['user'], $cfg['password'], [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"
+            $pdo = new \PDO($dsn, $cfg['user'], $cfg['password'], [
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                \PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"
             ]);
             return $pdo;
         } else { // sqlite
             $dsn = 'sqlite:' . $this->config['sqlite']['path'];
-            $pdo = new PDO($dsn);
+            $pdo = new \PDO($dsn);
             $pdo->exec('PRAGMA journal_mode = WAL;');
             $pdo->exec('PRAGMA foreign_keys = ON;');  // 启用外键（可选，增强兼容）
             return $pdo;
@@ -49,7 +49,7 @@ class Database {
     }
 
     public function getDriverName() {
-        return $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        return $this->pdo->getAttribute(\PDO::ATTR_DRIVER_NAME);
     }
 
     // 通用查询方法示例：执行带参数的查询
@@ -61,7 +61,7 @@ class Database {
 
     // 通用fetch方法
     public function fetchAll($sql, $params = []) {
-        return $this->query($sql, $params)->fetchAll(PDO::FETCH_ASSOC);
+        return $this->query($sql, $params)->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     // 插入/更新等通用方法，可以根据需要扩展
