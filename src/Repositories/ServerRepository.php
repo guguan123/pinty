@@ -1,9 +1,10 @@
 <?php
-// src/Repositories/ServerRepository.php - 封装服务器相关操作
+// src/Repositories/ServerRepository.php
 
 namespace GuGuan123\Pinty\Repositories;
 
 use GuGuan123\Pinty\Database;
+use Exception;  // 显式use全局Exception
 
 class ServerRepository {
     private $db;
@@ -48,9 +49,9 @@ class ServerRepository {
     public function getServerHistory($serverId, $limit = 20) {
         $sql = "SELECT cpu_usage, mem_usage_percent, disk_usage_percent, load_avg, net_up_speed, net_down_speed, total_up, total_down, timestamp 
                 FROM server_stats WHERE server_id = :id ORDER BY timestamp DESC LIMIT :limit";
-        $params = [':id' => $serverId, ':limit' => $limit];
+        $params = [':id' => $serverId, ':limit' => (int)$limit];
         $history = $this->db->fetchAll($sql, $params);
-        
+
         // 类型转换
         return array_map(function($record) {
             return [
@@ -65,7 +66,37 @@ class ServerRepository {
                 'timestamp' => (int)$record['timestamp']
             ];
         }, $history);
+    }
 
+    /**
+     * 获取所有服务器的在线状态 [id => is_online]
+     */
+    public function getOnlineStatuses() {
+        $sql = "SELECT id, is_online FROM server_status";
+        $statuses = $this->db->fetchAll($sql);
+        $result = [];
+        foreach ($statuses as $status) {
+            $result[$status['id']] = (bool)$status['is_online'];
+        }
+        return $result;
+    }
+
+    /**
+     * 获取所有服务器的最新统计，按server_id索引
+     */
+    public function getLatestStats() {
+        $driver = $this->db->getDriverName();
+        if ($driver === 'pgsql') {
+            $sql = "SELECT DISTINCT ON (server_id) * FROM server_stats ORDER BY server_id, timestamp DESC";
+        } else {
+            $sql = "SELECT s.* FROM server_stats s JOIN (SELECT server_id, MAX(timestamp) AS max_ts FROM server_stats GROUP BY server_id) AS m ON s.server_id = m.server_id AND s.timestamp = m.max_ts";
+        }
+        $stats = $this->db->fetchAll($sql);
+        $result = [];
+        foreach ($stats as $stat) {
+            $result[$stat['server_id']] = $stat;
+        }
+        return $result;
     }
 
     /**
