@@ -118,11 +118,11 @@ class ServerRepository {
     /**
      * 创建新服务器（生成secret）。
      */
-    public function createServer($id, $data) {
+    public function createServer($data) {
         $secret = bin2hex(random_bytes(16));  // 生成16字节随机secret
         $sql = "INSERT INTO servers (id, name, ip, latitude, longitude, intro, expiry_date, price_usd_monthly, price_usd_yearly, tags, secret) VALUES (:id, :name, :ip, :latitude, :longitude, :intro, :expiry_date, :price_usd_monthly, :price_usd_yearly, :tags, :secret)";
         // 修复：动态添加:前缀到data键，确保PDO绑定正确（兼容所有DB）
-        $params = [':id' => $id, ':secret' => $secret];
+        $params = [':id' => $data['id'], ':secret' => $secret];
         foreach ($data as $key => $value) {
             $params[':' . $key] = $value;
         }

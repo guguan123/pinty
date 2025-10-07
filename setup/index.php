@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
 
                 // 读取并执行SQL文件
-                $sql_file = __DIR__ . '/' . ucfirst($config['db_type']) . '.sql';
+                $sql_file = __DIR__ . '/' . $config['db_type'] . '.sql';
                 if (!file_exists($sql_file)) {
                     throw new Exception('SQL文件不存在: ' . $sql_file);
                 }
