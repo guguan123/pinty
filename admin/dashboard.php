@@ -7,104 +7,77 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     exit;
 }
 
+require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../config.php';
+
+use GuGuan123\Pinty\Repositories\ServerRepository;
+use GuGuan123\Pinty\Repositories\SettingsRepository;
+
 $message = '';
 $error_message = '';
 
 try {
-    // Universal PDO connection function
-    function get_pdo_connection() {
-        global $db_config;
-        if ($db_config['type'] === 'pgsql') {
-            $cfg = $db_config['pgsql'];
-            $dsn = "pgsql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['dbname']}";
-            $pdo = new PDO($dsn, $cfg['user'], $cfg['password']);
-        } else {
-            $dsn = 'sqlite:' . $db_config['sqlite']['path'];
-            $pdo = new PDO($dsn);
-            $pdo->exec('PRAGMA journal_mode = WAL;');
-        }
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        return $pdo;
-    }
+    $serverRepo = new ServerRepository($db_config);
+    $settingsRepo = new SettingsRepository($db_config);
 
-    $pdo = get_pdo_connection();
-
-    // Handle Server Deletion
+    // 删除服务器
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_server'])) {
-        $pdo->beginTransaction();
-        $stmt_del_server = $pdo->prepare("DELETE FROM servers WHERE id = ?");
-        $stmt_del_server->execute([$_POST['id']]);
-        // Also clean up related data
-        $stmt_del_stats = $pdo->prepare("DELETE FROM server_stats WHERE server_id = ?");
-        $stmt_del_stats->execute([$_POST['id']]);
-        $stmt_del_status = $pdo->prepare("DELETE FROM server_status WHERE id = ?");
-        $stmt_del_status->execute([$_POST['id']]);
-        $pdo->commit();
-        $message = "服务器 '{$_POST['id']}' 及其所有数据已成功删除！";
-        $pdo->commit();
-        $message = "服务器 '{$_POST['id']}' 及其所有数据已成功删除！";
+        $serverId = $_POST['id'] ?? '';
+        if (empty($serverId)) {
+            throw new Exception('服务器ID不能为空。');
+        }
+        $serverName = $serverRepo->getServerById($serverId)['name'] ?? $serverId;  // 获取名称用于消息
+        $serverRepo->deleteServer($serverId);  // 级联删除
+        $message = "服务器 '{$serverName}' 及其所有数据已成功删除！";
     }
 
-    // Handle Server Creation/Update
+    // 保存服务器
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_server'])) {
-        $id = $_POST['id'];
-        $is_new = empty($_POST['is_editing']);
-        
-        if ($is_new) {
-            $stmt_check = $pdo->prepare("SELECT id FROM servers WHERE id = ?");
-            $stmt_check->execute([$id]);
-            if ($stmt_check->fetch()) {
-                 throw new Exception("服务器 ID '{$id}' 已存在，请使用不同的ID。");
-            }
+        if (empty($_POST['id'])) {
+            throw new Exception('服务器ID不能为空。');
         }
-        
-        $expiry_date = empty($_POST['expiry_date']) ? null : strtotime($_POST['expiry_date']);
-        $latitude = !empty($_POST['latitude']) ? $_POST['latitude'] : null;
-        $longitude = !empty($_POST['longitude']) ? $_POST['longitude'] : null;
-    $price_monthly = !empty($_POST['price_usd_monthly']) ? $_POST['price_usd_monthly'] : null;
-    $price_yearly = !empty($_POST['price_usd_yearly']) ? $_POST['price_usd_yearly'] : null;
-    $tags = !empty($_POST['tags']) ? implode(',', array_map('trim', explode(',', $_POST['tags']))) : null;
-    $ip = $_POST['ip'] ?? null; // Get IP from form
-    
-    if (!$is_editing) {
-        // ... (check for existing ID) ...
-        $secret = bin2hex(random_bytes(16));
-        $sql = "INSERT INTO servers (id, name, ip, latitude, longitude, intro, expiry_date, price_usd_monthly, price_usd_yearly, tags, secret) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([$id, $_POST['name'], $ip, $latitude, $longitude, $_POST['intro'], $expiry_date, $price_monthly, $price_yearly, $tags, $secret]);
-        $message = "服务器 '{$_POST['name']}' 已成功添加！";
-    } else {
-        $sql = "UPDATE servers SET name = ?, ip = ?, latitude = ?, longitude = ?, intro = ?, expiry_date = ?, price_usd_monthly = ?, price_usd_yearly = ?, tags = ? WHERE id = ?";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([$_POST['name'], $ip, $latitude, $longitude, $_POST['intro'], $expiry_date, $price_monthly, $price_yearly, $tags, $id]);
-        $message = "服务器 '{$_POST['name']}' 已成功更新！";
+
+        // 准备数据
+        $data = [
+            'id' => $_POST['id'],
+            'name' => $_POST['name'] ?? '',
+            'ip' => $_POST['ip'] ?? null,
+            'latitude' => !empty($_POST['latitude']) ? (float)$_POST['latitude'] : null,
+            'longitude' => !empty($_POST['longitude']) ? (float)$_POST['longitude'] : null,
+            'intro' => $_POST['intro'] ?? '',
+            'expiry_date' => empty($_POST['expiry_date']) ? null : strtotime($_POST['expiry_date']),
+            'price_usd_monthly' => !empty($_POST['price_usd_monthly']) ? (float)$_POST['price_usd_monthly'] : null,
+            'price_usd_yearly' => !empty($_POST['price_usd_yearly']) ? (float)$_POST['price_usd_yearly'] : null,
+            'tags' => !empty($_POST['tags']) ? implode(',', array_map('trim', explode(',', $_POST['tags']))) : null,
+        ];
+
+        if (empty($_POST['is_editing'])) {
+            // 检查ID是否存在
+            if ($serverRepo->existsById($id)) {
+                throw new Exception("服务器 ID '{$id}' 已存在，请使用不同的ID。");
+            }
+            $serverRepo->createServer($id, $data);  // 生成secret并插入
+            $message = "服务器 '{$data['name']}' 已成功添加！";
+        } else {
+            $serverRepo->updateServer($id, $data);
+            $message = "服务器 '{$data['name']}' 已成功更新！";
+        }
     }
-}
-    
-    // Handle Telegram Settings
+
+    // 保存 Telegram 设置
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_telegram'])) {
-        $sql = $db_config['type'] === 'pgsql' 
-             ? "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
-             : "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)";
-        
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute(['telegram_bot_token', $_POST['telegram_bot_token']]);
-        $stmt->execute(['telegram_chat_id', $_POST['telegram_chat_id']]);
+        $settingsRepo->saveSetting('telegram_bot_token', $_POST['telegram_bot_token'] ?? '');
+        $settingsRepo->saveSetting('telegram_chat_id', $_POST['telegram_chat_id'] ?? '');
         $message = "Telegram 设置已保存！";
     }
 
-    $servers = $pdo->query("SELECT * FROM servers ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
-    
-    $tg_token_stmt = $pdo->prepare("SELECT value FROM settings WHERE key = ?");
-    $tg_token_stmt->execute(['telegram_bot_token']);
-    $telegram_bot_token = $tg_token_stmt->fetchColumn() ?: '';
-    
-    $tg_chat_id_stmt = $pdo->prepare("SELECT value FROM settings WHERE key = ?");
-    $tg_chat_id_stmt->execute(['telegram_chat_id']);
-    $telegram_chat_id = $tg_chat_id_stmt->fetchColumn() ?: '';
+    // Fetch data for display
+    $servers = $serverRepo->getAllServers();
+    $telegram_bot_token = $settingsRepo->getSetting('telegram_bot_token') ?: '';
+    $telegram_chat_id = $settingsRepo->getSetting('telegram_chat_id') ?: '';
 
 } catch (Exception $e) {
+    error_log("Dashboard error: " . $e->getMessage());  // 日志化
     $error_message = "操作失败: " . $e->getMessage();
 }
 ?>
@@ -233,82 +206,82 @@ try {
     </div>
     
     <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const addEditDetails = document.getElementById('add-edit-details');
-        const addEditForm = document.getElementById('add-edit-form');
-        const formSummary = addEditDetails.querySelector('summary');
-        const idInput = addEditForm.querySelector('input[name="id"]');
-        const isEditingInput = addEditForm.querySelector('input[name="is_editing"]');
-        const cancelBtn = document.getElementById('cancel-edit-btn');
-        const serversData = <?php echo json_encode($servers); ?>;
+        document.addEventListener('DOMContentLoaded', function() {
+            const addEditDetails = document.getElementById('add-edit-details');
+            const addEditForm = document.getElementById('add-edit-form');
+            const formSummary = addEditDetails.querySelector('summary');
+            const idInput = addEditForm.querySelector('input[name="id"]');
+            const isEditingInput = addEditForm.querySelector('input[name="is_editing"]');
+            const cancelBtn = document.getElementById('cancel-edit-btn');
+            const serversData = <?php echo json_encode($servers); ?>;
 
-        document.querySelectorAll('.edit-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                const serverId = this.dataset.id;
-                const server = serversData.find(s => s.id === serverId);
-                if (!server) {
-                    alert('找不到服务器数据！');
-                    return;
-                }
-
-                formSummary.textContent = `正在编辑: ${server.name}`;
-                idInput.value = server.id;
-                idInput.readOnly = true;
-                isEditingInput.value = '1';
-                
-                addEditForm.querySelector('input[name="name"]').value = server.name;
-                addEditForm.querySelector('input[name="longitude"]').value = server.longitude;
-                addEditForm.querySelector('input[name="latitude"]').value = server.latitude;
-                addEditForm.querySelector('input[name="ip"]').value = server.ip; 
-                addEditForm.querySelector('input[name="tags"]').value = server.tags;
-                addEditForm.querySelector('textarea[name="intro"]').value = server.intro;
-                addEditForm.querySelector('input[name="price_usd_yearly"]').value = server.price_usd_yearly;
-                
-                if (server.expiry_date) {
-                    const date = new Date(server.expiry_date * 1000);
-                    addEditForm.querySelector('input[name="expiry_date"]').value = date.toISOString().split('T')[0];
-                } else {
-                    addEditForm.querySelector('input[name="expiry_date"]').value = '';
-                }
-
-                addEditDetails.open = true;
-                cancelBtn.style.display = 'inline-block';
-                window.scrollTo({ top: addEditDetails.offsetTop, behavior: 'smooth' });
-            });
-        });
-
-        function resetForm() {
-            formSummary.textContent = '添加新服务器';
-            addEditForm.reset();
-            idInput.readOnly = false;
-            isEditingInput.value = '';
-            cancelBtn.style.display = 'none';
-        }
-        cancelBtn.addEventListener('click', resetForm);
-        addEditDetails.addEventListener('toggle', function() {
-            if (!this.open) {
-                resetForm();
-            }
-        });
-
-        document.querySelectorAll('.copy-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                const targetInput = document.querySelector(this.dataset.clipboardTarget);
-                if (targetInput) {
-                    targetInput.select();
-                    targetInput.setSelectionRange(0, 99999);
-                    try {
-                        document.execCommand('copy');
-                        const originalText = this.textContent;
-                        this.textContent = '已复制!';
-                        setTimeout(() => { this.textContent = originalText; }, 2000);
-                    } catch (err) {
-                        alert('复制失败，请手动复制。');
+            document.querySelectorAll('.edit-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const serverId = this.dataset.id;
+                    const server = serversData.find(s => s.id === serverId);
+                    if (!server) {
+                        alert('找不到服务器数据！');
+                        return;
                     }
+
+                    formSummary.textContent = `正在编辑: ${server.name}`;
+                    idInput.value = server.id;
+                    idInput.readOnly = true;
+                    isEditingInput.value = '1';
+                    
+                    addEditForm.querySelector('input[name="name"]').value = server.name;
+                    addEditForm.querySelector('input[name="longitude"]').value = server.longitude;
+                    addEditForm.querySelector('input[name="latitude"]').value = server.latitude;
+                    addEditForm.querySelector('input[name="ip"]').value = server.ip; 
+                    addEditForm.querySelector('input[name="tags"]').value = server.tags;
+                    addEditForm.querySelector('textarea[name="intro"]').value = server.intro;
+                    addEditForm.querySelector('input[name="price_usd_yearly"]').value = server.price_usd_yearly;
+                    
+                    if (server.expiry_date) {
+                        const date = new Date(server.expiry_date * 1000);
+                        addEditForm.querySelector('input[name="expiry_date"]').value = date.toISOString().split('T')[0];
+                    } else {
+                        addEditForm.querySelector('input[name="expiry_date"]').value = '';
+                    }
+
+                    addEditDetails.open = true;
+                    cancelBtn.style.display = 'inline-block';
+                    window.scrollTo({ top: addEditDetails.offsetTop, behavior: 'smooth' });
+                });
+            });
+
+            function resetForm() {
+                formSummary.textContent = '添加新服务器';
+                addEditForm.reset();
+                idInput.readOnly = false;
+                isEditingInput.value = '';
+                cancelBtn.style.display = 'none';
+            }
+            cancelBtn.addEventListener('click', resetForm);
+            addEditDetails.addEventListener('toggle', function() {
+                if (!this.open) {
+                    resetForm();
                 }
             });
+
+            document.querySelectorAll('.copy-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const targetInput = document.querySelector(this.dataset.clipboardTarget);
+                    if (targetInput) {
+                        targetInput.select();
+                        targetInput.setSelectionRange(0, 99999);
+                        try {
+                            document.execCommand('copy');
+                            const originalText = this.textContent;
+                            this.textContent = '已复制!';
+                            setTimeout(() => { this.textContent = originalText; }, 2000);
+                        } catch (err) {
+                            alert('复制失败，请手动复制。');
+                        }
+                    }
+                });
+            });
         });
-    });
     </script>
 </body>
 </html>
