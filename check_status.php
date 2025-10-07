@@ -154,8 +154,3 @@ try {
     error_log("check_status.php CRON Error: " . $e->getMessage());
     exit(1); // 以非零状态码退出，向 cron 守护进程表明任务失败
 }
-
-exit(0); // 成功完成
-?>
-
-
