@@ -1,6 +1,5 @@
 <?php
-// OutagesRepository.php - 封装故障记录相关操作
-// src/Repositories/OutagesRepository.php
+// src/Repositories/OutagesRepository.php - 修复版：修正SQL和变量错误
 
 namespace GuGuan123\Pinty\Repositories;
 
@@ -18,15 +17,14 @@ class OutagesRepository {
      * @param int $limit 限制记录数，默认50
      * @return array 故障记录数组
      */
-    public function getRecentOutages($limit = 50) {
-        $sql = "SELECT ... FROM server_stats WHERE server_id = ? ORDER BY timestamp DESC LIMIT ?";
-        $params = [$serverId, (int)$limit];
-        $outages = $this->db->fetchAll($sql, $params);
-        
+    public function getRecentOutages(int $limit = 50) {
+        $sql = "SELECT * FROM outages ORDER BY start_time DESC LIMIT {$limit}";  // 修正SQL：outages表，无server_id过滤
+        $outages = $this->db->fetchAll($sql);
+
         // 类型转换：时间戳转为int
-        return array_map(function($outage) {
-            $outage['start_time'] = (int)$outage['start_time'];
-            $outage['end_time'] = $outage['end_time'] ? (int)$outage['end_time'] : null;
+        return array_map(function(int $outage) {
+            $outage['start_time'] = $outage['start_time'];
+            $outage['end_time'] = $outage['end_time'] ? $outage['end_time'] : null;
             return $outage;
         }, $outages);
     }
