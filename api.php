@@ -1,9 +1,13 @@
 <?php
-// api.php - 重构后版本
+// api.php
+
+require_once __DIR__ . '/vendor/autoload.php';  // 唯一加载！
+require_once __DIR__ . '/config.php';  // config.php还是手动，除非你也放src/里
+
+use GuGuan123\Pinty\Repositories\ServerRepository;
+use GuGuan123\Pinty\Repositories\OutagesRepository;
 
 header('Content-Type: application/json');
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/ServerRepository.php'; // 新增
 
 try {
     $repo = new ServerRepository($db_config); // 注入配置

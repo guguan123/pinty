@@ -1,5 +1,7 @@
 <?php
-// Database.php - 封装PDO连接和基本操作
+// src/Database.php
+
+namespace GuGuan123\Pinty;
 
 class Database {
     private static $instance = null;

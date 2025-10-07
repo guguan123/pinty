@@ -1,5 +1,10 @@
 <?php
 // OutagesRepository.php - 封装故障记录相关操作
+// src/Repositories/OutagesRepository.php
+
+namespace GuGuan123\Pinty\Repositories;
+
+use GuGuan123\Pinty\Database;
 
 class OutagesRepository {
     private $db;

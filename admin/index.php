@@ -1,8 +1,11 @@
 <?php
+// admin/index.php
+
 session_start();
+
 // 如果 config.php 不存在，则重定向到安装程序
-if (!file_exists('../config.php')) {
-    header('Location: setup.php');
+if (!file_exists(__DIR__ . '/../config.php')) {
+    header('Location: ../setup/index.php');
     exit;
 }
 
@@ -12,29 +15,23 @@ if (isset($_SESSION['loggedin']) && $_SESSION['loggedin'] === true) {
     exit;
 }
 
-require_once __DIR__ . '../config.php';
-$error_message = '';
+require_once __DIR__ . '/../vendor/autoload.php';  // Composer autoload
+require_once __DIR__ . '/../config.php';  // 加载数据库配置
+
+use GuGuan123\Pinty\Database;
+use GuGuan123\Pinty\Repositories\UserRepository;  // 假设我们加了UserRepository
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        if ($db_config['type'] === 'pgsql') {
-            $cfg = $db_config['pgsql'];
-            $dsn = "pgsql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['dbname']}";
-            $pdo = new PDO($dsn, $cfg['user'], $cfg['password']);
-        } else {
-            $dsn = 'sqlite:' . $db_config['sqlite']['path'];
-            $pdo = new PDO($dsn);
-        }
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db = Database::getInstance($db_config);  // 用封装的Database
+        $userRepo = new UserRepository($db_config);  // 注入配置
 
         $username = $_POST['username'] ?? '';
         $password = $_POST['password'] ?? '';
 
-        $stmt = $pdo->prepare("SELECT password FROM users WHERE username = ?");
-        $stmt->execute([$username]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($user && password_verify($password, $user['password'])) {
+        // 用Repository验证
+        $isValid = $userRepo->verifyLogin($username, $password);
+        if ($isValid) {
             $_SESSION['loggedin'] = true;
             $_SESSION['username'] = $username;
             header('Location: dashboard.php');
@@ -43,7 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_message = '用户名或密码错误。';
         }
     } catch (Exception $e) {
-        $error_message = '数据库错误: ' . $e->getMessage();
+        error_log("Login error: " . $e->getMessage());  // 生产环境日志化
+        $error_message = '登录失败，请稍后重试。';  // 别暴露具体错误
     }
 }
 ?>
@@ -68,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body>
     <div class="container">
         <h1>登录到管理后台</h1>
-        <?php if ($error_message): ?><p class="error-message"><?php echo htmlspecialchars($error_message); ?></p><?php endif; ?>
+        <?php if (isset($error_message) && $error_message): ?><p class="error-message"><?php echo htmlspecialchars($error_message); ?></p><?php endif; ?>
         <form method="post">
             <div>
                 <label for="username">用户名</label>

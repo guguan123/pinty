@@ -1,5 +1,9 @@
 <?php
-// ServerRepository.php - 封装服务器相关操作
+// src/Repositories/ServerRepository.php - 封装服务器相关操作
+
+namespace GuGuan123\Pinty\Repositories;
+
+use GuGuan123\Pinty\Database;
 
 class ServerRepository {
     private $db;
@@ -47,15 +51,21 @@ class ServerRepository {
         $params = [':id' => $serverId, ':limit' => $limit];
         $history = $this->db->fetchAll($sql, $params);
         
-        // 类型转换（保持原有逻辑）
+        // 类型转换
         return array_map(function($record) {
             return [
                 'cpu_usage' => (float)$record['cpu_usage'],
                 'mem_usage_percent' => (float)$record['mem_usage_percent'],
-                // ... 其他转换
+                'disk_usage_percent' = (float)$record['disk_usage_percent'];
+                'load_avg' = (float)$record['load_avg'];
+                'net_up_speed' = (int)$record['net_up_speed'];
+                'net_down_speed' = (int)$record['net_down_speed'];
+                'total_up' = (int)$record['total_up'];
+                'total_down' = (int)$record['total_down'];
                 'timestamp' => (int)$record['timestamp']
             ];
         }, $history);
+
     }
 
     // 其他方法：getLatestStats, getOnlineStatus 等...

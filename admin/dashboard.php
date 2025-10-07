@@ -1,4 +1,6 @@
 <?php
+// admin/dashboard.php
+
 session_start();
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     header('Location: index.php');
@@ -27,68 +29,6 @@ try {
     }
 
     $pdo = get_pdo_connection();
-
-    // --- 自动数据库架构检查与更新 ---
-    if ($db_config['type'] === 'pgsql') {
-        // PostgreSQL Schema
-        $pdo->exec("
-            CREATE TABLE IF NOT EXISTS servers (
-                id VARCHAR(255) PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                latitude REAL,
-                longitude REAL,
-                intro TEXT,
-                tags TEXT,
-                secret VARCHAR(255),
-                cpu_cores INT,
-                cpu_model VARCHAR(255),
-                mem_total BIGINT,
-                disk_total BIGINT,
-                expiry_date BIGINT,
-                price_usd_yearly REAL
-            );
-            CREATE TABLE IF NOT EXISTS server_stats (
-                id SERIAL PRIMARY KEY, server_id VARCHAR(255) NOT NULL, timestamp BIGINT NOT NULL, cpu_usage REAL, mem_usage_percent REAL,
-                disk_usage_percent REAL, net_up_speed BIGINT, net_down_speed BIGINT, total_up BIGINT, total_down BIGINT, uptime VARCHAR(255), load_avg REAL
-            );
-            CREATE TABLE IF NOT EXISTS server_status (id VARCHAR(255) PRIMARY KEY, is_online BOOLEAN NOT NULL DEFAULT false, last_checked BIGINT);
-            CREATE TABLE IF NOT EXISTS outages (id SERIAL PRIMARY KEY, server_id VARCHAR(255) NOT NULL, start_time BIGINT, end_time BIGINT, title VARCHAR(255), content TEXT);
-            CREATE TABLE IF NOT EXISTS settings (key VARCHAR(255) PRIMARY KEY, value TEXT);
-            
-            -- Add new columns to servers table if they don't exist
-            DO $$ BEGIN ALTER TABLE servers ADD COLUMN IF NOT EXISTS tags TEXT; END $$;
-            DO $$ BEGIN ALTER TABLE servers ADD COLUMN IF NOT EXISTS secret VARCHAR(255); END $$;
-            DO $$ BEGIN ALTER TABLE servers ADD COLUMN IF NOT EXISTS cpu_cores INT; END $$;
-            DO $$ BEGIN ALTER TABLE servers ADD COLUMN IF NOT EXISTS cpu_model VARCHAR(255); END $$;
-            DO $$ BEGIN ALTER TABLE servers ADD COLUMN IF NOT EXISTS mem_total BIGINT; END $$;
-            DO $$ BEGIN ALTER TABLE servers ADD COLUMN IF NOT EXISTS disk_total BIGINT; END $$;
-        ");
-    } else {
-        // SQLite Schema
-        $pdo->exec("
-            CREATE TABLE IF NOT EXISTS servers (
-                id TEXT PRIMARY KEY, name TEXT NOT NULL, latitude REAL, longitude REAL, intro TEXT, tags TEXT, secret TEXT, 
-                cpu_cores INTEGER, cpu_model TEXT, mem_total INTEGER, disk_total INTEGER,
-                expiry_date INTEGER, price_usd_yearly REAL
-            );
-            CREATE TABLE IF NOT EXISTS server_stats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, server_id TEXT NOT NULL, timestamp INTEGER NOT NULL, cpu_usage REAL, mem_usage_percent REAL, 
-                disk_usage_percent REAL, net_up_speed INTEGER, net_down_speed INTEGER, total_up INTEGER, total_down INTEGER, uptime TEXT, load_avg REAL
-            );
-            CREATE TABLE IF NOT EXISTS server_status (id TEXT PRIMARY KEY, is_online INTEGER DEFAULT 0, last_checked INTEGER);
-            CREATE TABLE IF NOT EXISTS outages (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id TEXT, start_time INTEGER, end_time INTEGER, title TEXT, content TEXT);
-            CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
-        ");
-
-        // Add new columns to servers table for SQLite
-        $columns = $pdo->query("PRAGMA table_info(servers);")->fetchAll(PDO::FETCH_COLUMN, 1);
-        $add_cols = ['tags', 'secret', 'cpu_cores', 'cpu_model', 'mem_total', 'disk_total'];
-        foreach ($add_cols as $col) {
-            if (!in_array($col, $columns)) {
-                $pdo->exec("ALTER TABLE servers ADD COLUMN {$col} " . (in_array($col, ['mem_total', 'disk_total', 'cpu_cores']) ? 'INTEGER' : 'TEXT'));
-            }
-        }
-    }
 
     // Handle Server Deletion
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_server'])) {
@@ -372,4 +312,3 @@ try {
     </script>
 </body>
 </html>
-
