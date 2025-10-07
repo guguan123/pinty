@@ -112,6 +112,7 @@
 		</header>
 
 		<main id="main-content">
+			<!-- 地图主页 -->
 			<div id="map-view" class="view active">
 				<div id="world-map-container">
 					<div id="tooltip"></div>
@@ -1065,10 +1066,14 @@
 				   </svg>
 				</div>
 			</div>
+
+			<!-- 详细信息页面 -->
 			<div id="standalones-view" class="view">
 				<div class="tag-filters"></div>
 				<div class="card-grid"></div>
 			</div>
+
+			<!-- 最近的掉线记录页面 -->
 			<div id="outages-view" class="view">
 				 <div class="timeline"></div>
 			</div>
@@ -1174,13 +1179,20 @@
 		};
 
 		const tooltip = document.getElementById('tooltip');
+		// 地图
 		const mapContainer = document.getElementById('world-map-container');
+		// 页面选择按钮
 		const controls = document.querySelector('.controls');
+		// 3个主要页面
 		const views = document.querySelectorAll('.view');
+		// 节点信息页面卡片
 		const modalOverlay = document.getElementById('details-modal');
+		// 节点信息页面卡片的关闭按钮
 		const modalCloseBtn = document.getElementById('modal-close-btn');
+		// 语言按钮列表
 		const langSelector = document.querySelector('.language-selector');
 
+		// 更换语言
 		function setLanguage(lang) {
 			if (!translations[lang]) return;
 			currentLang = lang;
@@ -1198,10 +1210,11 @@
 			});
 			
 			if (monitorData.nodes.length > 0) {
-				 renderAllViews();
+				renderAllViews();
 			}
 		}
 
+		// 设置语言的按钮
 		langSelector.addEventListener('click', e => {
 			if (e.target.tagName === 'A') {
 				e.preventDefault();
@@ -1210,6 +1223,7 @@
 			}
 		});
 
+		// 显示错误信息
 		function displayError(message) {
 			const main = document.getElementById('main-content');
 			let errorOverlay = document.getElementById('error-overlay');
@@ -1256,6 +1270,7 @@
 		});
 		
 		modalCloseBtn.addEventListener('click', () => modalOverlay.classList.remove('active'));
+
 		modalOverlay.addEventListener('click', (e) => {
 			if (e.target === modalOverlay) {
 				modalOverlay.classList.remove('active');
@@ -1645,9 +1660,11 @@
 			}).onfinish = () => signal.remove();
 		}
 		
-		// --- Initial Load and Auto-Refresh ---
+		// 设置初始语言
 		const savedLang = localStorage.getItem('plexureLang') || 'zh';
 		setLanguage(savedLang);
+
+		// 循环获取信息
 		fetchData(); 
 		setInterval(fetchData, 10000);
 
