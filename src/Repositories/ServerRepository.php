@@ -45,8 +45,7 @@ class ServerRepository {
 
     // 获取服务器历史统计（带参数）
     public function getServerHistory($serverId, int $limit = 20) {
-        $sql = "SELECT cpu_usage, mem_usage_percent, disk_usage_percent, load_avg, net_up_speed, net_down_speed, total_up, total_down, timestamp 
-                FROM server_stats WHERE server_id = ? ORDER BY timestamp DESC LIMIT {$limit}";
+        $sql = "SELECT * FROM server_stats WHERE server_id = ? ORDER BY timestamp DESC LIMIT {$limit}";
         $params = [$serverId];
         $history = $this->db->fetchAll($sql, $params);
 
@@ -61,7 +60,9 @@ class ServerRepository {
                 'net_down_speed' => (int)$record['net_down_speed'],
                 'total_up' => (int)$record['total_up'],
                 'total_down' => (int)$record['total_down'],
-                'timestamp' => (int)$record['timestamp']
+                'timestamp' => (int)$record['timestamp'],
+                'processes' => (int)$record['processes'],
+                'connections' => (int)$record['connections']
             ];
         }, $history);
     }
