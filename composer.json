@@ -1,0 +1,18 @@
+{
+	"name": "guguan123/pinty",
+	"description": "基于PHP的简单探针系统",
+	"type": "project",
+	"license": "MIT",
+	"autoload": {
+		"psr-4": {
+			"GuGuan123\\Pinty\\": "src/"
+		}
+	},
+	"authors": [
+		{
+			"name": "GuGuan123",
+			"email": "admin@guguan.us.kg"
+		}
+	],
+	"require": {}
+}
