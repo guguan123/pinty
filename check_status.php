@@ -1,156 +1,223 @@
 <?php
-// check_status.php - Cron job script to check for offline servers and send alerts.
-// v1.2 - Added logic to mark timed-out servers as offline.
+// check_status.php - 定时任务脚本：用于检测服务器是否离线，并通过 Telegram 发送告警通知。
 
-// Set a default timezone to prevent potential date/time warnings in cron environment.
-date_default_timezone_set('UTC'); 
+namespace GuGuan123\Pinty;
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/vendor/autoload.php';
 
-// --- 自包含函数定义 ---
-
-/**
- * 创建并返回一个 PDO 数据库连接对象。
- * @return PDO
- * @throws Exception
- */
-function get_pdo_connection() {
-    global $db_config;
-    if (empty($db_config)) {
-        throw new Exception("数据库配置 (config.php) 丢失或为空。");
-    }
-    try {
-        if ($db_config['type'] === 'pgsql') {
-            $cfg = $db_config['pgsql'];
-            $dsn = "pgsql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['dbname']}";
-            return new PDO($dsn, $cfg['user'], $cfg['password']);
-        } else { // sqlite
-            $dsn = 'sqlite:' . $db_config['sqlite']['path'];
-            $pdo = new PDO($dsn);
-            $pdo->exec('PRAGMA journal_mode = WAL;');
-            return $pdo;
-        }
-    } catch (PDOException $e) {
-        error_log("check_status.php - 数据库连接失败: " . $e->getMessage());
-        throw new Exception("数据库连接失败。");
-    }
-}
+use GuGuan123\Pinty\Repositories\ServerRepository;
+use GuGuan123\Pinty\Repositories\OutagesRepository;
+use GuGuan123\Pinty\Repositories\SettingsRepository;
 
 /**
- * 通过 Telegram 机器人发送消息。
- * @param string $token 机器人 API Token
- * @param string $chat_id 目标聊天 ID
- * @param string $message 消息文本
- * @return bool 成功返回 true, 失败返回 false
+ * Class CheckStatus
+ * 核心类：负责检测服务器状态并发送通知
  */
-function send_telegram_message($token, $chat_id, $message) {
-    if (empty($token) || empty($chat_id)) {
-        error_log("Telegram bot token or chat ID is not configured.");
-        return false;
+class CheckStatus {
+    /**
+     * 离线阈值（秒）
+     * 如果服务器超过这个时间没有上报数据，则视为离线
+     */
+    private const OFFLINE_THRESHOLD = 35;
+
+    /** @var ServerRepository 服务器数据仓库 */
+    private ServerRepository $serverRepo;
+
+    /** @var OutagesRepository 故障记录仓库 */
+    private OutagesRepository $outagesRepo;
+
+	/** @var int $enabledPush */
+
+    /** @var string Telegram Bot Token */
+    private string $botToken;
+
+    /** @var string Telegram 聊天 ID */
+    private string $chatId;
+
+    /**
+     * 构造函数
+     * @param array $dbConfig 数据库配置数组
+     */
+    public function __construct(array $dbConfig, array $telegram_config) {
+        // 初始化仓库实例
+        $this->serverRepo = new ServerRepository($dbConfig);
+        $this->outagesRepo = new OutagesRepository($dbConfig);
+
+		$enabledPush = $telegram_config['enabled'];
+
+		if ($enabledPush == 1) {
+			// 获取 Telegram 配置
+			$this->botToken = $telegram_config['botToken'];
+			$this->chatId = $telegram_config['chatId'];
+
+			// 如果未配置 Telegram 参数，记录日志警告
+			if (empty($this->botToken) || empty($this->chatId)) {
+				error_log('Telegram bot token or chat ID is not configured.');
+			}
+		}
     }
-    $url = "https://api.telegram.org/bot" . $token . "/sendMessage";
-    $data = [
-        'chat_id' => $chat_id,
-        'text' => $message,
-        'parse_mode' => 'Markdown' // 使用 Markdown 格式化消息
-    ];
 
-    $options = [
-        'http' => [
-            'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
-            'method'  => 'POST',
-            'content' => http_build_query($data),
-            'ignore_errors' => true // 即使HTTP状态码是4xx/5xx，也获取响应内容
-        ],
-    ];
-    $context  = stream_context_create($options);
-    $result = file_get_contents($url, false, $context);
-    
-    if ($result === FALSE) {
-        error_log("Telegram API request failed completely (file_get_contents returned false).");
-        return false;
-    }
-    
-    $response_data = json_decode($result, true);
-    if (!isset($response_data['ok']) || !$response_data['ok']) {
-        error_log("Telegram API Error: " . ($response_data['description'] ?? 'Unknown error'));
-        return false;
-    }
-    
-    return true;
-}
-
-// --- 主要脚本逻辑 ---
-
-const OFFLINE_THRESHOLD = 35; // 服务器超过35秒未报告，则标记为离线
-
-try {
-    $pdo = get_pdo_connection();
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-    // --- 1. 更新服务器在线状态 ---
-    $current_time = time();
-    $status_stmt = $pdo->query("SELECT id, last_checked, is_online FROM server_status");
-    $all_statuses = $status_stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $update_status_stmt = $pdo->prepare("UPDATE server_status SET is_online = false WHERE id = ?");
-
-    foreach ($all_statuses as $status) {
-        if ($status['is_online'] && ($current_time - $status['last_checked'] > OFFLINE_THRESHOLD)) {
-            // 如果服务器当前是在线状态，但最后报告时间已超时，则将其标记为离线
-            $update_status_stmt->execute([$status['id']]);
-            error_log("Server '{$status['id']}' marked as offline due to timeout.");
+    /**
+     * 主运行方法
+     * 执行状态检测与通知逻辑
+     */
+    public function run(): void {
+        try {
+            $this->updateOfflineStatuses();         // 更新离线状态
+            $this->processOutagesAndNotifications(); // 处理故障与通知
+        } catch (\Exception $e) {
+            error_log("check_status.php CRON Error: " . $e->getMessage());
+            exit(1); // 异常退出，确保 cron 能感知失败
         }
     }
 
-    // --- 2. 处理掉线和恢复通知 ---
-    // 获取 Telegram 设置
-    $settings_stmt = $pdo->query("SELECT key, value FROM settings WHERE key LIKE 'telegram_%'");
-    $settings = $settings_stmt->fetchAll(PDO::FETCH_KEY_PAIR);
-    $bot_token = $settings['telegram_bot_token'] ?? '';
-    $chat_id = $settings['telegram_chat_id'] ?? '';
+    /**
+     * 检查服务器是否超时未上报，若超时则标记为离线
+     */
+    private function updateOfflineStatuses(): void {
+        $currentTime = time(); // 当前时间戳
+        $statuses = $this->serverRepo->getOnlineStatuses(); // 获取所有服务器在线状态 [id => is_online]
 
-    // 查询所有服务器及其最后的状态
-    $servers_stmt = $pdo->query("SELECT s.id, s.name, st.is_online FROM servers s LEFT JOIN server_status st ON s.id = st.id");
-    $servers = $servers_stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    foreach ($servers as $server) {
-        $server_id = $server['id'];
-        $server_name = $server['name'];
-        $is_currently_online = (bool)$server['is_online'];
-
-        // 检查此服务器是否存在一个未结束的掉线记录
-        $outage_stmt = $pdo->prepare("SELECT * FROM outages WHERE server_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1");
-        $outage_stmt->execute([$server_id]);
-        $active_outage = $outage_stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$is_currently_online) {
-            // 情况1：服务器当前是离线状态
-            if (!$active_outage) {
-                // 并且没有进行中的掉线记录，说明这是新的掉线事件
-                $start_time = time();
-                $insert_stmt = $pdo->prepare("INSERT INTO outages (server_id, start_time, title, content) VALUES (?, ?, ?, ?)");
-                $insert_stmt->execute([$server_id, $start_time, '服务器掉线', '服务器停止报告数据。']);
-                
-                $message = "🔴 *服务离线警告*\n\n服务器 `{$server_name}` (`{$server_id}`) 已停止响应。";
-                send_telegram_message($bot_token, $chat_id, $message);
+        foreach ($statuses as $serverId => $isOnline) {
+            if ($isOnline) {
+                // 获取该服务器最新一条统计数据
+                $latestStat = $this->serverRepo->getLatestStats()[$serverId] ?? null;
+                if ($latestStat && ($currentTime - (int)$latestStat['timestamp'] > self::OFFLINE_THRESHOLD)) {
+                    // 超过阈值未上报，标记为离线
+                    $this->serverRepo->updateStatus($serverId, false, $currentTime);
+                    error_log("Server '{$serverId}' marked as offline due to timeout.");
+                }
             }
+        }
+    }
+
+    /**
+     * 处理故障事件并发送通知
+     * - 如果服务器离线且无活跃故障记录，则创建新故障并发送离线警告
+     * - 如果服务器恢复在线且有活跃故障记录，则关闭故障并发送恢复通知
+     */
+    private function processOutagesAndNotifications(): void {
+        $servers = $this->serverRepo->getAllServers(); // 获取所有服务器信息
+        $onlineStatuses = $this->serverRepo->getOnlineStatuses(); // 获取当前在线状态
+
+        foreach ($servers as $server) {
+            $serverId = $server['id'];
+            $serverName = $server['name'];
+            $isCurrentlyOnline = $onlineStatuses[$serverId] ?? false;
+
+            // 查询该服务器是否有未结束的故障记录
+            $activeOutage = $this->outagesRepo->getActiveOutageForServer($serverId);
+
+            if (!$isCurrentlyOnline) {
+                // 当前离线
+                if (!$activeOutage) {
+                    // 无活跃故障，说明是新的离线事件
+                    $this->outagesRepo->createOutage($serverId, '服务器掉线', '服务器停止报告数据。');
+
+					if ($this->enabledPush == 1) {
+						// 发送 Telegram 离线警告
+						$message = "🔴 *服务离线警告*\n\n服务器 `{$serverName}` (`{$serverId}`) 已停止响应。";
+						$this->sendTelegramMessage($message);
+					}
+                }
+            } else {
+                // 当前在线
+                if ($activeOutage) {
+                    // 有活跃故障，说明服务器已恢复
+                    $endTime = time();
+                    $duration = $endTime - $activeOutage['start_time']; // 离线时长（秒）
+
+                    $durationStr = $this->formatDuration($duration); // 格式化时长
+
+                    // 更新故障记录结束时间
+                    $this->outagesRepo->updateOutageEndTime($activeOutage['id'], $endTime);
+
+					if ($this->enabledPush == 1) {
+						// 发送 Telegram 恢复通知
+						$message = "✅ *服务恢复通知*\n\n服务器 `{$serverName}` (`{$serverId}`) 已恢复在线。\n持续离线时间：约 {$durationStr}。";
+						$this->sendTelegramMessage($message);
+					}
+                }
+            }
+        }
+    }
+
+    /**
+     * 发送 Telegram 消息
+     * @param string $message 要发送的消息内容（支持 Markdown）
+     * @return bool 是否发送成功
+     */
+    private function sendTelegramMessage(string $message): bool {
+        if (empty($this->botToken) || empty($this->chatId)) {
+            return false; // 未配置 Telegram 参数，直接返回失败
+        }
+
+        $url = "https://api.telegram.org/bot{$this->botToken}/sendMessage";
+        $data = [
+            'chat_id' => $this->chatId,
+            'text' => $message,
+            'parse_mode' => 'Markdown'
+        ];
+
+        // 创建 HTTP 请求上下文
+        $options = [
+            'http' => [
+                'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
+                'method'  => 'POST',
+                'content' => http_build_query($data),
+                'ignore_errors' => true // 不抛出错误，手动处理
+            ],
+        ];
+        $context = stream_context_create($options);
+        $result = @file_get_contents($url, false, $context); // 发送请求
+
+        if ($result === false) {
+            error_log("Telegram API request failed.");
+            return false;
+        }
+
+        // 解析返回结果
+        $responseData = json_decode($result, true);
+        if (!isset($responseData['ok']) || !$responseData['ok']) {
+            error_log("Telegram API Error: " . ($responseData['description'] ?? 'Unknown error'));
+            return false;
+        }
+
+        return true; // 发送成功
+    }
+
+    /**
+     * 格式化时长（秒 → 人类可读）
+     * @param int $duration 时长（秒）
+     * @return string 格式化后的字符串，如“5 分钟”或“1.5 小时”
+     */
+    private function formatDuration(int $duration): string {
+        if ($duration < 60) {
+            return "{$duration} 秒";
+        } elseif ($duration < 3600) {
+            return round($duration / 60) . " 分钟";
         } else {
-            // 情况2：服务器当前是在线状态
-            if ($active_outage) {
-                // 但数据库中有一条未结束的掉线记录，说明它刚刚恢复
-                $end_time = time();
-                $duration = round(($end_time - $active_outage['start_time']) / 60);
-                $update_stmt = $pdo->prepare("UPDATE outages SET end_time = ? WHERE id = ?");
-                $update_stmt->execute([$end_time, $active_outage['id']]);
-
-                $message = "✅ *服务恢复通知*\n\n服务器 `{$server_name}` (`{$server_id}`) 已恢复在线。\n持续离线时间：约 {$duration} 分钟。";
-                send_telegram_message($bot_token, $chat_id, $message);
-            }
+            return round($duration / 3600, 1) . " 小时";
         }
     }
-} catch (Exception $e) {
-    // 将任何错误记录到PHP错误日志中
-    error_log("check_status.php CRON Error: " . $e->getMessage());
-    exit(1); // 以非零状态码退出，向 cron 守护进程表明任务失败
+}
+
+/**
+ * 脚本入口
+ * 捕获初始化异常并记录日志
+ */
+try {
+	$settingsRepo = new SettingsRepository($dbConfig)
+	// 从数据库获取 Telegram 配置
+	$telegram_config = array(
+		'enabled' => $settingsRepo->getSetting('telegram_enabled'),
+		'botToken' => $settingsRepo->getSetting('telegram_bot_token'),
+		'chatId' => $settingsRepo->getSetting('telegram_chat_id')
+	);
+	$checkStatus = new CheckStatus($db_config, $telegram_config);
+	$checkStatus->run();
+} catch (\Exception $e) {
+    error_log("check_status.php Initialization Error: " . $e->getMessage());
+    exit(1); // 异常退出，确保 cron 能感知失败
 }

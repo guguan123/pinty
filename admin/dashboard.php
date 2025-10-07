@@ -85,6 +85,7 @@ try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_telegram'])) {
         $settingsRepo->saveSetting('telegram_bot_token', $_POST['telegram_bot_token'] ?? NULL);
         $settingsRepo->saveSetting('telegram_chat_id', $_POST['telegram_chat_id'] ?? NULL);
+        $settingsRepo->saveSetting('telegram_enabled', isset($_POST['telegram_enabled']) ? 1 : 0);
         $message = "Telegram 设置已保存！";
     }
 
@@ -95,6 +96,7 @@ try {
     $site_name = $settingsRepo->getSetting('site_name') ?: '';
     $telegram_bot_token = $settingsRepo->getSetting('telegram_bot_token') ?: '';
     $telegram_chat_id = $settingsRepo->getSetting('telegram_chat_id') ?: '';
+    $telegram_enabled = (bool)($settingsRepo->getSetting('telegram_enabled') ?? false);
 
 } catch (Exception $e) {
     $error_message = "操作失败: " . $e->getMessage();
@@ -136,6 +138,7 @@ try {
                 <form action="dashboard.php" method="post" style="margin-top: 1.5rem;">
                     <p>当服务器掉线时，系统会自动发送通知。请按照部署指南获取Token和Chat ID。</p>
                     <div class="form-grid">
+                        <div><label for="tg-enabled">启用 Telegram 通知</label><input id="tg-enabled" type="checkbox" name="telegram_enabled" <?php echo $telegram_enabled ? 'checked' : ''; ?>></div>
                         <div><label for="tg-token">Telegram Bot Token</label><input id="tg-token" type="text" name="telegram_bot_token" value="<?php echo htmlspecialchars($telegram_bot_token); ?>" placeholder="例如: 123456:ABC-DEF..."></div>
                         <div><label for="tg-chat">Telegram Channel/User ID</label><input id="tg-chat" type="text" name="telegram_chat_id" value="<?php echo htmlspecialchars($telegram_chat_id); ?>" placeholder="例如: -100123456789 or 12345678"></div>
                     </div>
