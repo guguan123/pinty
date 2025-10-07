@@ -19,8 +19,8 @@ class OutagesRepository {
      * @return array 故障记录数组
      */
     public function getRecentOutages($limit = 50) {
-        $sql = "SELECT * FROM outages ORDER BY start_time DESC LIMIT :limit";
-        $params = [':limit' => $limit];
+        $sql = "SELECT ... FROM server_stats WHERE server_id = ? ORDER BY timestamp DESC LIMIT ?";
+        $params = [$serverId, (int)$limit];
         $outages = $this->db->fetchAll($sql, $params);
         
         // 类型转换：时间戳转为int

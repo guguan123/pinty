@@ -48,8 +48,8 @@ class ServerRepository {
     // 获取服务器历史统计（带参数）
     public function getServerHistory($serverId, $limit = 20) {
         $sql = "SELECT cpu_usage, mem_usage_percent, disk_usage_percent, load_avg, net_up_speed, net_down_speed, total_up, total_down, timestamp 
-                FROM server_stats WHERE server_id = :id ORDER BY timestamp DESC LIMIT :limit";
-        $params = [':id' => $serverId, ':limit' => (int)$limit];
+                FROM server_stats WHERE server_id = ? ORDER BY timestamp DESC LIMIT ?";
+        $params = [$serverId, (int)$limit];
         $history = $this->db->fetchAll($sql, $params);
 
         // 类型转换
@@ -88,7 +88,7 @@ class ServerRepository {
         $driver = $this->db->getDriverName();
         if ($driver === 'pgsql') {
             $sql = "SELECT DISTINCT ON (server_id) * FROM server_stats ORDER BY server_id, timestamp DESC";
-        } else {
+        } else {  // MySQL 和 SQLite 通用子查询
             $sql = "SELECT s.* FROM server_stats s JOIN (SELECT server_id, MAX(timestamp) AS max_ts FROM server_stats GROUP BY server_id) AS m ON s.server_id = m.server_id AND s.timestamp = m.max_ts";
         }
         $stats = $this->db->fetchAll($sql);
@@ -123,7 +123,11 @@ class ServerRepository {
     public function createServer($id, $data) {
         $secret = bin2hex(random_bytes(16));  // 生成16字节随机secret
         $sql = "INSERT INTO servers (id, name, ip, latitude, longitude, intro, expiry_date, price_usd_monthly, price_usd_yearly, tags, secret) VALUES (:id, :name, :ip, :latitude, :longitude, :intro, :expiry_date, :price_usd_monthly, :price_usd_yearly, :tags, :secret)";
-        $params = array_merge($data, [':id' => $id, ':secret' => $secret]);
+        // 修复：动态添加:前缀到data键，确保PDO绑定正确（兼容所有DB）
+        $params = [':id' => $id, ':secret' => $secret];
+        foreach ($data as $key => $value) {
+            $params[':' . $key] = $value;
+        }
         $this->db->execute($sql, $params);
     }
 
@@ -137,7 +141,7 @@ class ServerRepository {
             $this->db->execute("DELETE FROM server_stats WHERE server_id = :id", [':id' => $id]);
             // 删除status
             $this->db->execute("DELETE FROM server_status WHERE id = :id", [':id' => $id]);
-            // 删除outages（假设有）
+            // 删除outages
             $this->db->execute("DELETE FROM outages WHERE server_id = :id", [':id' => $id]);
             // 删除servers
             $this->db->execute("DELETE FROM servers WHERE id = :id", [':id' => $id]);
