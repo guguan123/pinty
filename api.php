@@ -2,7 +2,7 @@
 // api.php
 
 require_once __DIR__ . '/vendor/autoload.php';  // 唯一加载！
-require_once __DIR__ . '/config.php';  // config.php还是手动，除非你也放src/里
+require_once __DIR__ . '/config.php';
 
 use GuGuan123\Pinty\Repositories\ServerRepository;
 use GuGuan123\Pinty\Repositories\OutagesRepository;
@@ -24,7 +24,7 @@ try {
 
     foreach ($servers as $node) {
         $node_id = $node['id'];
-        $node['x'] = (float)($node['latitude'] ?? 0);
+        $node['x'] = $node['latitude'];
         $node['y'] = (float)($node['longitude'] ?? 0);
         $node['stats'] = $latest_stats[$node_id] ?? [];
         $node['is_online'] = (bool)($online_status[$node_id] ?? false);
