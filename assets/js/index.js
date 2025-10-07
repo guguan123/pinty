@@ -61,9 +61,9 @@ document.addEventListener('DOMContentLoaded', () => {
 	const langSelector = document.querySelector('.language-selector');
 
 	/* =========================================================
-     * 工具函数集合
-     * ========================================================= */
-    /** 切换界面语言 – 同步更新 DOM、html lang 属性、localStorage */
+	 * 工具函数集合
+	 * ========================================================= */
+	/** 切换界面语言 – 同步更新 DOM、html lang 属性、localStorage */
 	function setLanguage(lang) {
 		currentLang = lang;
 		document.querySelectorAll('[data-lang]').forEach(element => {
@@ -170,9 +170,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 	/* =========================================================
-     * 视图渲染函数
-     * ========================================================= */
-    /** 总调度 – 三大视图一次全刷新（地图、卡片、时间线） */
+	 * 视图渲染函数
+	 * ========================================================= */
+	/** 总调度 – 三大视图一次全刷新（地图、卡片、时间线） */
 	function renderAllViews() {
 		console.log('renderAllViews');
 		if (document.getElementById('map-view').classList.contains('active')) initializeMap(monitorData.nodes);
@@ -372,9 +372,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 	/* =========================================================
-     * 详情弹窗 – 含节点静态信息 + 6 张历史折线图
-     * ========================================================= */
-    /** 打开弹窗 -> 拉取历史 -> 绘制 SVG 折线 */
+	 * 详情弹窗 – 含节点静态信息 + 6 张历史折线图
+	 * ========================================================= */
+	/** 打开弹窗 -> 拉取历史 -> 绘制 SVG 折线 */
 	async function showDetailsModal(serverId) {
 		const node = monitorData.nodes.find(n => n.id == serverId);
 		if (!node) return;
@@ -487,9 +487,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 	/* =========================================================
-     * Signal 飞线动画 – 仅在「地图」视图且页签可见时触发
-     * ========================================================= */
-    /** 随机选取两个在线节点 -> 计算角度 -> CSS 动画 */
+	 * Signal 飞线动画 – 仅在「地图」视图且页签可见时触发
+	 * ========================================================= */
+	/** 随机选取两个在线节点 -> 计算角度 -> CSS 动画 */
 	function fireSignal(nodes) {
 		if (!nodes) return;
 		const availableNodes = nodes.filter(n => n.is_online && n.x && n.y);
@@ -527,9 +527,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 	/* =========================================================
-     * 事件绑定
-     * ========================================================= */
-    /** 顶部视图切换按钮 – 激活样式 + 显示对应区域 */
+	 * 事件绑定
+	 * ========================================================= */
+	/** 顶部视图切换按钮 – 激活样式 + 显示对应区域 */
 	controls.addEventListener('click', (e) => {
 		if (e.target.tagName !== 'BUTTON') return;
 		const viewName = e.target.dataset.view;
@@ -562,9 +562,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-    /* =========================================================
-     * 生命周期管理 – 自动刷新 / 页面可见性优化
-     * ========================================================= */
+	/* =========================================================
+	 * 生命周期管理 – 自动刷新 / 页面可见性优化
+	 * ========================================================= */
 	let fetchDataInterval; // 数据轮询句柄
 	let signalInterval; // Signal 动画定时句柄
 
