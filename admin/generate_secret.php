@@ -1,12 +1,15 @@
 <?php
+// admin/generate_secret.php
+
 session_start();
+
+header('Content-Type: application/json');
+
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     http_response_code(403);
-    echo json_encode(['error' => 'Permission denied']);
     exit;
 }
 
-header('Content-Type: application/json');
 require_once __DIR__ . '/../config.php';
 
 function get_pdo_connection() {

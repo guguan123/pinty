@@ -53,13 +53,13 @@ try {
 
         if (empty($_POST['is_editing'])) {
             // 检查ID是否存在
-            if ($serverRepo->existsById($id)) {
-                throw new Exception("服务器 ID '{$id}' 已存在，请使用不同的ID。");
+            if ($serverRepo->existsById($data['id'])) {
+                throw new Exception("服务器 ID '{$data['id']}' 已存在，请使用不同的ID。");
             }
-            $serverRepo->createServer($id, $data);  // 生成secret并插入
+            $serverRepo->createServer($data);  // 生成secret并插入
             $message = "服务器 '{$data['name']}' 已成功添加！";
         } else {
-            $serverRepo->updateServer($id, $data);
+            $serverRepo->updateServer($data);
             $message = "服务器 '{$data['name']}' 已成功更新！";
         }
     }

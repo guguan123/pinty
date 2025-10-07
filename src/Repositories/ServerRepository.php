@@ -20,11 +20,10 @@ class ServerRepository {
     }
 
     // 更新服务器
-    public function updateServer($id, $data) {
+    public function updateServer(array $data) {
         $sql = "UPDATE servers SET 
                     name = :name, 
-                    ip = :ip, 
-                    port = :port, 
+                    ip = :ip,
                     longitude = :longitude, 
                     latitude = :latitude, 
                     intro = :intro, 
@@ -32,10 +31,9 @@ class ServerRepository {
                     expiry_date = :expiry_date 
                 WHERE id = :id";
         $params = [
-            ':id' => $id,
+            ':id' => $data['id'],
             ':name' => $data['name'],
             ':ip' => $data['ip'],
-            ':port' => $data['port'],
             ':longitude' => $data['longitude'],
             ':latitude' => $data['latitude'],
             ':intro' => $data['intro'],
@@ -150,5 +148,75 @@ class ServerRepository {
             $this->db->getPdo()->rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * 验证服务器secret和IP（抛异常如果无效）。
+     * @param string $serverId
+     * @param string $secret
+     * @param string|null $requestIp
+     * @throws return
+     */
+    public function validateServer($serverId, $secret, $requestIp = null) {
+        $server = $this->getServerById($serverId);
+        if (!$server) {
+            return array('code' => 404, 'msg' => 'Invalid server_id.');
+        }
+
+        // Secret validation
+        if (empty($server['secret']) || !hash_equals($server['secret'], $secret)) {
+            return array('code' => 403, 'msg' => 'Invalid secret.');
+        }
+
+        // IP validation
+        $stored_ip = $server['ip'] ?? null;
+        if (!empty($stored_ip) && $stored_ip !== $requestIp) {
+            return array('code' => 403, 'msg' => 'IP address mismatch.');
+        }
+
+        return array('code' => 200, 'msg' => 'OK');
+    }
+
+    /**
+     * 更新服务器硬件信息。
+     * @param string $serverId
+     * @param int|null $cpuCores
+     * @param string|null $cpuModel
+     * @param int|null $memTotal
+     * @param int|null $diskTotal
+     */
+    public function updateHardware($serverId, $cpuCores = null, $cpuModel = null, $memTotal = null, $diskTotal = null) {
+        $sql = "UPDATE servers SET 
+                    cpu_cores = COALESCE(?, cpu_cores),
+                    cpu_model = COALESCE(?, cpu_model),
+                    mem_total = COALESCE(?, mem_total),
+                    disk_total = COALESCE(?, disk_total)
+                WHERE id = ?";
+        $params = [$cpuCores, $cpuModel, $memTotal, $diskTotal, $serverId];
+        $this->db->execute($sql, $params);
+    }
+
+    /**
+     * 更新服务器在线状态（DB-specific UPSERT）。
+     * @param string $serverId
+     * @param bool $isOnline
+     * @param int|null $lastChecked
+     */
+    public function updateStatus($serverId, $isOnline = true, $lastChecked = null) {
+        $driver = $this->db->getDriverName();
+        $isOnlineVal = $isOnline ? 1 : 0;
+        $lastCheckedVal = $lastChecked ?? time();
+
+        if ($driver === 'pgsql') {
+            $sql = "INSERT INTO server_status (id, is_online, last_checked) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET is_online = ?, last_checked = ?";
+            $params = [$serverId, $isOnlineVal, $lastCheckedVal, $isOnlineVal, $lastCheckedVal];
+        } elseif ($driver === 'mysql') {
+            $sql = "INSERT INTO server_status (id, is_online, last_checked) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE is_online = VALUES(is_online), last_checked = VALUES(last_checked)";
+            $params = [$serverId, $isOnlineVal, $lastCheckedVal];
+        } else { // sqlite
+            $sql = "INSERT OR REPLACE INTO server_status (id, is_online, last_checked) VALUES (?, ?, ?)";
+            $params = [$serverId, $isOnlineVal, $lastCheckedVal];
+        }
+        $this->db->execute($sql, $params);
     }
 }

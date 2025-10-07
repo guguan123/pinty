@@ -1,41 +1,15 @@
 <?php
-// report.php - v1.2 - Receives status updates from monitored servers.
+// report.php - v1.3 - 重构版：使用Composer autoload和Database封装，兼容MySQL
+
 error_reporting(0);
 ini_set('display_errors', 0);
 
 header('Content-Type: application/json');
+require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/config.php';
 
-// --- 自包含函数定义 ---
-
-/**
- * 创建并返回一个 PDO 数据库连接对象。
- * @return PDO
- * @throws Exception
- */
-function get_pdo_connection() {
-    global $db_config;
-    if (empty($db_config)) {
-        throw new Exception("数据库配置 (config.php) 丢失或为空。");
-    }
-    try {
-        if ($db_config['type'] === 'pgsql') {
-            $cfg = $db_config['pgsql'];
-            $dsn = "pgsql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['dbname']}";
-            return new PDO($dsn, $cfg['user'], $cfg['password']);
-        } else { // sqlite
-            $dsn = 'sqlite:' . $db_config['sqlite']['path'];
-            $pdo = new PDO($dsn);
-            $pdo->exec('PRAGMA journal_mode = WAL;');
-            return $pdo;
-        }
-    } catch (PDOException $e) {
-        throw new Exception("数据库连接失败: " . $e->getMessage());
-    }
-}
-
-
-// --- 主要脚本逻辑 ---
+use GuGuan123\Pinty\Database;
+use GuGuan123\Pinty\Repositories\ServerRepository;
 
 $input = json_decode(file_get_contents('php://input'), true);
 
@@ -55,37 +29,19 @@ if (empty($server_id) || empty($secret)) {
 }
 
 try {
-    $pdo = get_pdo_connection();
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $db = Database::getInstance($db_config);  // 用封装的Database
+    $pdo = $db->getPdo();
+    $serverRepo = new ServerRepository($db_config);
 
-    // Fetch server secret and IP for validation
-    $stmt = $pdo->prepare("SELECT secret, ip FROM servers WHERE id = ?");
-    $stmt->execute([$server_id]);
-    $server = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$server) {
-        http_response_code(404);
-        throw new Exception('Invalid server_id.');
-    }
-
-    // --- SECURITY CHECKS ---
-    // 1. Secret Key Validation
-    if (empty($server['secret']) || !hash_equals($server['secret'], $secret)) {
-        http_response_code(403);
-        throw new Exception('Invalid secret.');
-    }
-
-    // 2. IP Address Validation
-    $stored_ip = $server['ip'] ?? null;
+    // 获取服务器IP
     $request_ip = $_SERVER['REMOTE_ADDR'];
 
-    if (!empty($stored_ip) && $stored_ip !== $request_ip) {
-        http_response_code(403);
-        error_log("IP validation failed for server '{$server_id}'. Expected '{$stored_ip}', got '{$request_ip}'.");
-        throw new Exception('IP address mismatch.');
+    // 验证服务器（secret + IP）
+    $validated = $serverRepo->validateServer($server_id, $secret, $request_ip);
+    if ($validated['code'] !== 200) {
+        http_response_code($validated['code']);
+        echo json_encode(['error' => $validated['msg']]);
     }
-    
-    // --- End Security Checks ---
 
     $pdo->beginTransaction();
 
@@ -107,24 +63,18 @@ try {
         $input['total_down'] ?? 0,
     ]);
 
-    // Update server hardware info (only on report, not every time)
-    $sql_update_hw = "UPDATE servers SET cpu_cores = ?, cpu_model = ?, mem_total = ?, disk_total = ? WHERE id = ?";
-    $stmt_update_hw = $pdo->prepare($sql_update_hw);
-    $stmt_update_hw->execute([
-        $input['cpu_cores'] ?? null,
-        $input['cpu_model'] ?? null,
-        $input['mem_total'] ?? null,
-        $input['disk_total'] ?? null,
-        $server_id
-    ]);
+    // Update server hardware info (only if provided)
+    if (isset($input['cpu_cores']) || isset($input['cpu_model']) || isset($input['mem_total']) || isset($input['disk_total'])) {
+        $serverRepo->updateHardware($server_id, 
+            $input['cpu_cores'] ?? null,
+            $input['cpu_model'] ?? null,
+            $input['mem_total'] ?? null,
+            $input['disk_total'] ?? null
+        );
+    }
 
-
-    // Update server status to online
-    $sql_status = $db_config['type'] === 'pgsql'
-        ? "INSERT INTO server_status (id, is_online, last_checked) VALUES (?, true, ?) ON CONFLICT (id) DO UPDATE SET is_online = true, last_checked = EXCLUDED.last_checked"
-        : "INSERT OR REPLACE INTO server_status (id, is_online, last_checked) VALUES (?, 1, ?)";
-    $stmt_status = $pdo->prepare($sql_status);
-    $stmt_status->execute([$server_id, time()]);
+    // Update server status to online (DB-specific UPSERT)
+    $serverRepo->updateStatus($server_id, true, time());
 
     $pdo->commit();
 
@@ -134,9 +84,8 @@ try {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
-    // Don't expose detailed DB errors to the client script
     error_log("report.php Error for server '{$server_id}': " . $e->getMessage());
-    if(!headers_sent()){
+    if (!headers_sent()) {
         http_response_code(500);
     }
     echo json_encode(['error' => 'An internal server error occurred.']);
