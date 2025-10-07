@@ -117,13 +117,8 @@ EOF
     # 首次报告后，不再发送静态信息以节省带宽
     STATIC_INFO_JSON=""
 
-    # 在发送数据前打印所有数据
-    echo "=== Sending data to API ==="
-    echo "$JSON_PAYLOAD"
-    echo "=========================="
+    HTTP_RESPONSE=$(curl --write-out "HTTPSTATUS:%{http_code}" -s -X POST -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "$API_ENDPOINT")
 
-    HTTP_RESPONSE=$(curl --write-out "HTTPSTATUS:%{http_code}" -X POST -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "$API_ENDPOINT")
-    
     echo $HTTP_RESPONSE
 
     HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
