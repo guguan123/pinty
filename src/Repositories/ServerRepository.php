@@ -56,12 +56,12 @@ class ServerRepository {
             return [
                 'cpu_usage' => (float)$record['cpu_usage'],
                 'mem_usage_percent' => (float)$record['mem_usage_percent'],
-                'disk_usage_percent' = (float)$record['disk_usage_percent'];
-                'load_avg' = (float)$record['load_avg'];
-                'net_up_speed' = (int)$record['net_up_speed'];
-                'net_down_speed' = (int)$record['net_down_speed'];
-                'total_up' = (int)$record['total_up'];
-                'total_down' = (int)$record['total_down'];
+                'disk_usage_percent' => (float)$record['disk_usage_percent'],
+                'load_avg' => (float)$record['load_avg'],
+                'net_up_speed' => (int)$record['net_up_speed'],
+                'net_down_speed' => (int)$record['net_down_speed'],
+                'total_up' => (int)$record['total_up'],
+                'total_down' => (int)$record['total_down'],
                 'timestamp' => (int)$record['timestamp']
             ];
         }, $history);
@@ -93,15 +93,6 @@ class ServerRepository {
         $secret = bin2hex(random_bytes(16));  // 生成16字节随机secret
         $sql = "INSERT INTO servers (id, name, ip, latitude, longitude, intro, expiry_date, price_usd_monthly, price_usd_yearly, tags, secret) VALUES (:id, :name, :ip, :latitude, :longitude, :intro, :expiry_date, :price_usd_monthly, :price_usd_yearly, :tags, :secret)";
         $params = array_merge($data, [':id' => $id, ':secret' => $secret]);
-        $this->db->execute($sql, $params);
-    }
-
-    /**
-     * 更新服务器（不更新secret）。
-     */
-    public function updateServer($id, $data) {
-        $sql = "UPDATE servers SET name = :name, ip = :ip, latitude = :latitude, longitude = :longitude, intro = :intro, expiry_date = :expiry_date, price_usd_monthly = :price_usd_monthly, price_usd_yearly = :price_usd_yearly, tags = :tags WHERE id = :id";
-        $params = array_merge($data, [':id' => $id]);
         $this->db->execute($sql, $params);
     }
 
