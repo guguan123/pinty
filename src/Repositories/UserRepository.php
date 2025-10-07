@@ -1,5 +1,5 @@
 <?php
-// src/Repositories/UserRepository.php - 封装用户相关操作（登录验证）
+// src/Repositories/UserRepository.php
 
 namespace GuGuan123\Pinty\Repositories;
 

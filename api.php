@@ -6,12 +6,14 @@ require_once __DIR__ . '/config.php';
 
 use GuGuan123\Pinty\Repositories\ServerRepository;
 use GuGuan123\Pinty\Repositories\OutagesRepository;
+use GuGuan123\Pinty\Repositories\SettingsRepository;
 
 header('Content-Type: application/json');
 
 try {
     $repo = new ServerRepository($db_config);
-    $outagesRepo = new OutagesRepository($db_config); // 复用
+    $outagesRepo = new OutagesRepository($db_config);
+    $settingsRepo = new SettingsRepository($db_config);
     $section = $_GET['action'] ?? 'all'; // 默认 'all' 兼容旧版，但推荐前端指定
     $serverId = $_GET['id'] ?? null;
     $limit = (int)($_GET['limit'] ?? 20); // 历史限量
@@ -19,7 +21,11 @@ try {
     $response = [];
 
     switch ($section) {
-        case 'map':
+        case 'web-info':
+            $response['site_name'] = $settingsRepo->getSetting('site_name') ?: NULL;
+            break;
+
+        case 'list':
             // 地图只需基本节点 + 状态 + 最新 stats（无历史）
             $servers = $repo->getAllServers();
             $online_status = $repo->getOnlineStatuses();
@@ -62,7 +68,7 @@ try {
             break;
 
         case 'outages':
-            // 只返回故障列表
+            // 返回故障列表
             $response['outages'] = $outagesRepo->getRecentOutages($limit); // 支持 limit
             break;
 

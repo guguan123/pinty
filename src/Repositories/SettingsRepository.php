@@ -1,5 +1,5 @@
 <?php
-// src/Repositories/SettingsRepository.php - 更新版：支持MySQL
+// src/Repositories/SettingsRepository.php
 
 namespace GuGuan123\Pinty\Repositories;
 
