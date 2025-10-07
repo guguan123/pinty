@@ -68,5 +68,61 @@ class ServerRepository {
 
     }
 
-    // 其他方法：getLatestStats, getOnlineStatus 等...
+    /**
+     * 检查服务器ID是否存在。
+     */
+    public function existsById($id) {
+        $sql = "SELECT id FROM servers WHERE id = :id LIMIT 1";
+        $params = [':id' => $id];
+        return !empty($this->db->fetchAll($sql, $params));
+    }
+
+    /**
+     * 获取单个服务器详情。
+     */
+    public function getServerById($id) {
+        $sql = "SELECT * FROM servers WHERE id = :id LIMIT 1";
+        $params = [':id' => $id];
+        return $this->db->fetchAll($sql, $params)[0] ?? null;
+    }
+
+    /**
+     * 创建新服务器（生成secret）。
+     */
+    public function createServer($id, $data) {
+        $secret = bin2hex(random_bytes(16));  // 生成16字节随机secret
+        $sql = "INSERT INTO servers (id, name, ip, latitude, longitude, intro, expiry_date, price_usd_monthly, price_usd_yearly, tags, secret) VALUES (:id, :name, :ip, :latitude, :longitude, :intro, :expiry_date, :price_usd_monthly, :price_usd_yearly, :tags, :secret)";
+        $params = array_merge($data, [':id' => $id, ':secret' => $secret]);
+        $this->db->execute($sql, $params);
+    }
+
+    /**
+     * 更新服务器（不更新secret）。
+     */
+    public function updateServer($id, $data) {
+        $sql = "UPDATE servers SET name = :name, ip = :ip, latitude = :latitude, longitude = :longitude, intro = :intro, expiry_date = :expiry_date, price_usd_monthly = :price_usd_monthly, price_usd_yearly = :price_usd_yearly, tags = :tags WHERE id = :id";
+        $params = array_merge($data, [':id' => $id]);
+        $this->db->execute($sql, $params);
+    }
+
+    /**
+     * 删除服务器及相关数据（级联）。
+     */
+    public function deleteServer($id) {
+        $this->db->getPdo()->beginTransaction();  // 事务
+        try {
+            // 删除stats
+            $this->db->execute("DELETE FROM server_stats WHERE server_id = :id", [':id' => $id]);
+            // 删除status
+            $this->db->execute("DELETE FROM server_status WHERE id = :id", [':id' => $id]);
+            // 删除outages（假设有）
+            $this->db->execute("DELETE FROM outages WHERE server_id = :id", [':id' => $id]);
+            // 删除servers
+            $this->db->execute("DELETE FROM servers WHERE id = :id", [':id' => $id]);
+            $this->db->getPdo()->commit();
+        } catch (Exception $e) {
+            $this->db->getPdo()->rollBack();
+            throw $e;
+        }
+    }
 }
