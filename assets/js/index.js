@@ -1,13 +1,13 @@
 document.addEventListener('DOMContentLoaded', () => {
 	/* -------------------- 数据与状态区 -------------------- */
 	// 后端原始数据
-	let monitorData = { nodes: [], outages: [], site_name: 'Pinty Monitor' };
+	let monitorData = { nodes: [] };
+	let webInfoData;
+	let outagesData = { outages: [] };
 	// 当前视图按钮
 	let activeButton = document.querySelector('.controls button[data-view="map"]');
 	// 当前语言
 	let currentLang = 'zh';
-	// Signal 动画定时器
-	let signalInterval = null;
 	// 已选标签
 	let activeTags = new Set();
 	// 卡片分页当前页
@@ -89,21 +89,54 @@ document.addEventListener('DOMContentLoaded', () => {
 		errorOverlay.innerHTML = `<pre><strong>${translations[currentLang].error_loading}</strong>\n${message}</pre>`;
 	}
 
-	/** 请求后端数据 – 入口：fetchData() / 10s 轮询 */
-	async function fetchData() {
+	/** 请求服务器列表数据 */
+	async function fetchServerList() {
 		try {
-			const response = await fetch('api.php?action=map');
+			const response = await fetch('api.php?action=list');
 			if (!response.ok) throw new Error(`${translations[currentLang].error_api_status} ${response.status}: ${await response.text()}`);
 			const data = await response.json();
 			if (data.error) throw new Error(`${translations[currentLang].error_api_error} ${data.error}`);
 			
 			monitorData = data;
-			document.title = monitorData.site_name;
-			document.getElementById('site-title').textContent = monitorData.site_name;
-			document.getElementById('copyright-footer').textContent = `Copyright 2025 ${monitorData.site_name}. Powered by Pinty.`;
 			renderAllViews();
 		} catch (error) {
-			console.error("获取监控数据失败:", error);
+			console.error("获取监控数据失败: ", error);
+			displayError(error.message);
+		}
+	}
+
+	/** 请求网页设置信息 */
+	async function fetchWebInfoData() {
+		try {
+			const response = await fetch('api.php?action=web-info');
+			if (!response.ok) throw new Error(`${translations[currentLang].error_api_status} ${response.status}: ${await response.text()}`);
+			const data = await response.json();
+			if (data.error) throw new Error(`${translations[currentLang].error_api_error} ${data.error}`);
+			
+			webInfoData = data;
+			if (webInfoData.site_name) {
+				document.title = webInfoData.site_name;
+				document.getElementById('site-title').textContent = webInfoData.site_name;
+				document.getElementById('copyright-footer').textContent = `Copyright 2025 ${webInfoData.site_name}. Powered by Pinty.`;
+			}
+		} catch (error) {
+			console.error("获取设置信息失败: ", error);
+			displayError(error.message);
+		}
+	}
+
+	async function fetchOutageList() {
+		console.log('fetchOutageList');
+		try {
+			const response = await fetch('api.php?action=outages');
+			if (!response.ok) throw new Error(`${translations[currentLang].error_api_status} ${response.status}: ${await response.text()}`);
+			const data = await response.json();
+			if (data.error) throw new Error(`${translations[currentLang].error_api_error} ${data.error}`);
+
+			outagesData = data;
+			renderAllViews();
+		} catch (error) {
+			console.error("获取掉线记录列表失败: ", error);
 			displayError(error.message);
 		}
 	}
@@ -141,15 +174,28 @@ document.addEventListener('DOMContentLoaded', () => {
      * ========================================================= */
     /** 总调度 – 三大视图一次全刷新（地图、卡片、时间线） */
 	function renderAllViews() {
-		initializeMap(monitorData.nodes);
-		generateStandalonesView(monitorData.nodes);
-		generateOutagesView(monitorData.outages, monitorData.nodes);
-		generateTagFilters(monitorData.nodes);
+		console.log('renderAllViews');
+		if (document.getElementById('map-view').classList.contains('active')) initializeMap(monitorData.nodes);
+		if (document.getElementById('standalones-view').classList.contains('active')) {
+			generateStandalonesView(monitorData.nodes);
+			generateTagFilters(monitorData.nodes);
+		}
+		if (document.getElementById('outages-view').classList.contains('active')) generateOutagesView(outagesData.outages);
 	}
 
-	function switchView(viewId) {
+	// 更换页面
+	async function switchView(viewId) {
 		views.forEach(view => view.classList.remove('active'));
 		document.getElementById(viewId)?.classList.add('active');
+		switch (viewId) {
+			case 'map-view':
+			case 'standalones-view':
+				fetchServerList();
+				break;
+			case 'outages-view':
+				fetchOutageList();
+				break;
+		}
 	}
 
 	/** 1. 世界地图 – 动态插入 SVG 圆点 + Tooltip + 点击事件 */
@@ -256,23 +302,41 @@ document.addEventListener('DOMContentLoaded', () => {
 		}
 	}
 
-	/** 3. 掉线时间线 – 按开始时间倒序，未恢复标红 */
-	function generateOutagesView(outages, nodes) {
+	/**
+	 * 3. 掉线时间线 – 按开始时间倒序，未恢复标红
+	 * @param {Array} outages - 掉线事件数组，每个事件包含 id, server_id, start_time, end_time, title, content 等属性
+	 * @description 生成掉线时间线视图：遍历事件，匹配节点，构建 HTML 时间线项，未恢复事件标红。
+	 */
+	function generateOutagesView(outages) {
+		// 获取时间线容器元素
 		const container = document.querySelector('#outages-view .timeline');
+		// 清空容器内容
 		container.innerHTML = '';
+		
+		// 如果没有掉线事件，显示无事件消息（使用当前语言翻译）
 		if (!outages || outages.length === 0) {
 			container.innerHTML = `<p>${translations[currentLang].outages_none}</p>`;
 			return;
 		}
+		
+		// 遍历每个掉线事件（假设 outages 已按 start_time 倒序排序）
 		outages.forEach(outage => {
-			const node = nodes.find(n => n.id == outage.server_id);
-			const nodeName = node ? `${getFlagEmoji(node.country_code)} ${node.name}` : outage.server_id;
+			// 生成节点名称：如果找到节点，使用国旗 Emoji + 名称；否则使用 server_id 作为 fallback
+			const nodeName = `${getFlagEmoji(outage.country_code)} ${outage.name}`;
+			
+			// 格式化开始时间为本地化字符串（中文使用 'zh-CN' 格式，其他语言默认）
 			const startTime = new Date(outage.start_time * 1000).toLocaleString(currentLang.startsWith('zh') ? 'zh-CN' : undefined);
+			
+			// 初始化内容为事件描述
 			let content = outage.content;
+			// 如果事件已恢复（有 end_time），追加恢复提示和持续时间
 			if (outage.end_time) {
 				content += `<br>${translations[currentLang].outages_recovered} ${formatDuration(outage.end_time - outage.start_time)}.`;
 			}
+			
+			// 构建时间线项 HTML：添加 'critical' 类如果未恢复（用于 CSS 标红）
 			const itemHTML = `<div class="timeline-item ${!outage.end_time ? 'critical' : ''}"><div class="time">${startTime}</div><div class="title">${outage.title} - ${nodeName}</div><div class="content">${content}</div></div>`;
+			// 追加 HTML 到容器
 			container.innerHTML += itemHTML;
 		});
 	}
@@ -497,24 +561,34 @@ document.addEventListener('DOMContentLoaded', () => {
 	});
 
 
+
     /* =========================================================
      * 生命周期管理 – 自动刷新 / 页面可见性优化
      * ========================================================= */
 	let fetchDataInterval; // 数据轮询句柄
+	let signalInterval; // Signal 动画定时句柄
 
 	/** 启动轮询 & Signal – 先清后开，防止重复 */
 	const startIntervals = () => {
-		// Stop existing intervals before starting new ones to prevent duplicates
+		// 在开始新的轮询，先停止现有的轮询以防重复
 		if (fetchDataInterval) clearInterval(fetchDataInterval);
 		if (signalInterval) clearInterval(signalInterval);
 
 		// 循环获取信息
-		fetchData(); 
-		fetchDataInterval = setInterval(fetchData, 10000);
+		fetchServerList();
+		fetchDataInterval = setInterval(() => {
+			// 仅在地图页和详情页获取服务器列表
+			if (document.getElementById('map-view').classList.contains('active') || document.getElementById('standalones-view').classList.contains('active')) {
+				fetchServerList();
+			} else if (document.getElementById('outages-view').classList.contains('active')) {
+				fetchOutageList();
+			}
+		}, 10000);
 
 		signalInterval = setInterval(() => {
+			// 仅在地图页播放地图上的动画
 			if (document.getElementById('map-view').classList.contains('active')) {
-				fireSignal(monitorData.nodes);
+				//fireSignal(monitorData.nodes);
 			}
 		}, 800);
 	};
@@ -534,8 +608,11 @@ document.addEventListener('DOMContentLoaded', () => {
 		}
 	});
 
+
+
 	/* -------------------- 首次初始化 -------------------- */
 	const savedLang = localStorage.getItem('pintyLang') || 'zh';
 	setLanguage(savedLang);
 	startIntervals(); // 拉数据 + 启动动画
+	fetchWebInfoData();
 });
