@@ -1,5 +1,5 @@
 <?php
-// src/Database.php
+// src/Database.php - 更新版：添加MySQL支持
 
 namespace GuGuan123\Pinty;
 
@@ -22,20 +22,34 @@ class Database {
     }
 
     private function createConnection() {
-        if ($this->config['type'] === 'pgsql') {
+        $type = $this->config['type'];
+        if ($type === 'pgsql') {
             $cfg = $this->config['pgsql'];
             $dsn = "pgsql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['dbname']}";
             return new PDO($dsn, $cfg['user'], $cfg['password']);
+        } elseif ($type === 'mysql') {
+            $cfg = $this->config['mysql'];
+            $dsn = "mysql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['dbname']};charset=utf8mb4";
+            $pdo = new PDO($dsn, $cfg['user'], $cfg['password'], [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"
+            ]);
+            return $pdo;
         } else { // sqlite
             $dsn = 'sqlite:' . $this->config['sqlite']['path'];
             $pdo = new PDO($dsn);
             $pdo->exec('PRAGMA journal_mode = WAL;');
+            $pdo->exec('PRAGMA foreign_keys = ON;');  // 启用外键（可选，增强兼容）
             return $pdo;
         }
     }
 
     public function getPdo() {
         return $this->pdo;
+    }
+
+    public function getDriverName() {
+        return $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
     }
 
     // 通用查询方法示例：执行带参数的查询
