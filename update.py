@@ -143,17 +143,17 @@ def get_static_info():
         if HAS_PSUTIL:
             static['cpu_cores'] = psutil.cpu_count()
             static['cpu_model'] = psutil.cpu_freq()._asdict().get('model', '') or 'unknown'
-            static['mem_total'] = f"{psutil.virtual_memory().total / (1024**2):.0f} MB"
-            static['disk_total'] = f"{psutil.disk_usage('/').total / (1024**3):.0f} GB"
+            static['total_mem'] = f"{psutil.virtual_memory().total / (1024**2):.0f} MB"
+            static['total_disk'] = f"{psutil.disk_usage('/').total / (1024**3):.0f} GB"
         else:
             # Fallback
             output = subprocess.check_output(['grep', 'model name', '/proc/cpuinfo']).decode()
             static['cpu_model'] = output.split(':', 1)[1].strip() if output else 'unknown'
             static['cpu_cores'] = int(subprocess.check_output(['nproc']).decode())
             output = subprocess.check_output(['free', '-m']).decode()
-            static['mem_total'] = f"{output.split()[6]} MB"  # total in line 1
+            static['total_mem'] = f"{output.split()[6]} MB"  # total in line 1
             output = subprocess.check_output(['df', '-h', '/']).decode()
-            static['disk_total'] = output.split()[8]  # size in line 1
+            static['total_disk'] = output.split()[8]  # size in line 1
     except Exception as e:
         logger.error(f"Failed to get static info: {e}")
     return static
@@ -214,9 +214,14 @@ def main():
             logger.info("Sent static info on first run.")
             send_static = False
 
+        # 打印完整payload到屏幕（控制台）
+        print("\n" + "="*50)
+        print(f"POST Data at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:")
+        print(json.dumps(payload, indent=2))
+        print("="*50 + "\n")
+
         # 发送
         status_code, response_body = send_report(payload)
-        logger.info(f"Payload preview: {json.dumps(payload, indent=2)[:200]}...")  # 截断预览
 
         if status_code == 200:
             logger.info("Reported successfully.")
