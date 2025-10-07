@@ -15,7 +15,7 @@ class ServerRepository {
 
     // 获取所有服务器
     public function getAllServers() {
-        $sql = "SELECT id, name, intro, tags, price_usd_yearly, latitude, longitude FROM servers ORDER BY id ASC";
+        $sql = "SELECT * FROM servers ORDER BY id ASC";
         return $this->db->fetchAll($sql);
     }
 
