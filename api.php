@@ -1,7 +1,7 @@
 <?php
-// api.php
+// api.php - 优化版：按需加载，支持 section 参数
 
-require_once __DIR__ . '/vendor/autoload.php';  // 唯一加载！
+require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/config.php';
 
 use GuGuan123\Pinty\Repositories\ServerRepository;
@@ -10,35 +10,88 @@ use GuGuan123\Pinty\Repositories\OutagesRepository;
 header('Content-Type: application/json');
 
 try {
-    $repo = new ServerRepository($db_config); // 注入配置
+    $repo = new ServerRepository($db_config);
+    $outagesRepo = new OutagesRepository($db_config); // 复用
+    $section = $_GET['section'] ?? 'all'; // 默认 'all' 兼容旧版，但推荐前端指定
+    $serverId = $_GET['id'] ?? null;
+    $limit = (int)($_GET['limit'] ?? 20); // 历史限量
 
-    $response = [
-        'nodes' => [],
-        'outages' => [],
-    ];
+    $response = [];
 
-    // 用Repository替换查询
-    $servers = $repo->getAllServers();
-    $online_status = $repo->getOnlineStatuses(); // 假设你加了这个方法
-    $latest_stats = $repo->getLatestStats(); // 同上
+    switch ($section) {
+        case 'map':
+            // 地图只需基本节点 + 状态 + 最新 stats（无历史）
+            $servers = $repo->getAllServers();
+            $online_status = $repo->getOnlineStatuses();
+            $latest_stats = $repo->getLatestStats();
 
-    foreach ($servers as $node) {
-        $node_id = $node['id'];
-        $node['x'] = $node['latitude'];
-        $node['y'] = (float)($node['longitude'] ?? 0);
-        $node['stats'] = $latest_stats[$node_id] ?? [];
-        $node['is_online'] = (bool)($online_status[$node_id] ?? false);
-        if (!$node['is_online']) {
-            $node['anomaly_msg'] = '服务器掉线';
-        }
-        $node['history'] = array_reverse($repo->getServerHistory($node_id)); // 直接调用
+            $nodes = [];
+            foreach ($servers as $node) {
+                $node_id = $node['id'];
+                $node['x'] = $node['latitude'];
+                $node['y'] = (float)($node['longitude'] ?? 0);
+                $node['stats'] = $latest_stats[$node_id] ?? [];
+                $node['is_online'] = (bool)($online_status[$node_id] ?? false);
+                if (!$node['is_online']) {
+                    $node['anomaly_msg'] = '服务器掉线';
+                }
+                // 无历史，节省流量
+                $nodes[] = $node;
+            }
+            $response['nodes'] = $nodes;
+            break;
 
-        $response['nodes'][] = $node;
+        case 'server':
+            // 单服务器详情：基本 + 历史 + stats
+            if (!$serverId || !$repo->existsById($serverId)) {
+                throw new Exception('Invalid server ID');
+            }
+            $server = $repo->getServerById($serverId);
+            if (!$server) {
+                throw new Exception('Server not found');
+            }
+            $server['x'] = $server['latitude'];
+            $server['y'] = (float)($server['longitude'] ?? 0);
+            $server['stats'] = $repo->getLatestStats()[$serverId] ?? [];
+            $server['is_online'] = (bool)($repo->getOnlineStatuses()[$serverId] ?? false);
+            if (!$server['is_online']) {
+                $server['anomaly_msg'] = '服务器掉线';
+            }
+            $server['history'] = array_reverse($repo->getServerHistory($serverId, $limit)); // 支持 limit
+            $response['node'] = $server;
+            break;
+
+        case 'outages':
+            // 只返回故障列表
+            $response['outages'] = $outagesRepo->getRecentOutages($limit); // 支持 limit
+            break;
+
+        case 'all':
+            // 兼容旧版：全量（但不推荐长期用）
+            $servers = $repo->getAllServers();
+            $online_status = $repo->getOnlineStatuses();
+            $latest_stats = $repo->getLatestStats();
+
+            $nodes = [];
+            foreach ($servers as $node) {
+                $node_id = $node['id'];
+                $node['x'] = $node['latitude'];
+                $node['y'] = (float)($node['longitude'] ?? 0);
+                $node['stats'] = $latest_stats[$node_id] ?? [];
+                $node['is_online'] = (bool)($online_status[$node_id] ?? false);
+                if (!$node['is_online']) {
+                    $node['anomaly_msg'] = '服务器掉线';
+                }
+                $node['history'] = array_reverse($repo->getServerHistory($node_id, $limit));
+                $nodes[] = $node;
+            }
+            $response['nodes'] = $nodes;
+            $response['outages'] = $outagesRepo->getRecentOutages(50);
+            break;
+
+        default:
+            throw new Exception('Invalid section: ' . $section);
     }
-
-    // outages可以用另一个Repository处理
-    $outagesRepo = new OutagesRepository($db_config);
-    $response['outages'] = $outagesRepo->getRecentOutages(50);
 
     echo json_encode($response);
 
