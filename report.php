@@ -48,8 +48,8 @@ try {
     $pdo->beginTransaction();
 
     // Insert server statistics
-    $sql_stats = "INSERT INTO server_stats (server_id, timestamp, cpu_usage, mem_usage_percent, disk_usage_percent, uptime, load_avg, net_up_speed, net_down_speed, total_up, total_down) 
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $sql_stats = "INSERT INTO server_stats (server_id, timestamp, cpu_usage, mem_usage_percent, disk_usage_percent, uptime, load_avg, net_up_speed, net_down_speed, total_up, total_down, processes, connections) 
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $stmt_stats = $pdo->prepare($sql_stats);
     $stmt_stats->execute([
         $server_id,
@@ -63,15 +63,19 @@ try {
         $input['net_down_speed'] ?? 0,
         $input['total_up'] ?? 0,
         $input['total_down'] ?? 0,
+        $input['processes'] ?? NULL,
+        $input['connections'] ?? NULL
     ]);
 
     // Update server hardware info (only if provided)
-    if (isset($input['cpu_cores']) || isset($input['cpu_model']) || isset($input['mem_total']) || isset($input['disk_total'])) {
+    if (isset($input['static_info'])) {
         $serverRepo->updateHardware($server_id, 
-            $input['cpu_cores'] ?? null,
-            $input['cpu_model'] ?? null,
-            $input['mem_total'] ?? null,
-            $input['disk_total'] ?? null
+            $input['static_info']['cpu_cores'] ?? null,
+            $input['static_info']['cpu_model'] ?? null,
+            $input['static_info']['mem_total_bytes'] ?? null,
+            $input['static_info']['disk_total_bytes'] ?? null,
+            $input['static_info']['system'] ?? null,
+            $input['static_info']['arch'] ?? null
         );
     }
 

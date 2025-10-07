@@ -13,8 +13,9 @@ CREATE TABLE IF NOT EXISTS servers (
     mem_total         INTEGER,
     disk_total        INTEGER,
     expiry_date       INTEGER,
-    price_usd_monthly REAL,
-    price_usd_yearly  REAL
+    country_code TEXT,
+    system TEXT,
+    arch TEXT
 );
 
 -- 性能快照
@@ -30,7 +31,9 @@ CREATE TABLE IF NOT EXISTS server_stats (
     total_up            INTEGER,
     total_down          INTEGER,
     uptime              TEXT,
-    load_avg            REAL
+    load_avg            REAL,
+    processes           INT,
+    connections         INT,
 );
 CREATE INDEX IF NOT EXISTS idx_stats_server_time ON server_stats(server_id, timestamp);
 

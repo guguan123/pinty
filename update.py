@@ -5,6 +5,7 @@ import time
 import logging
 import subprocess
 import sys
+import os
 from datetime import datetime
 try:
     import psutil
@@ -24,7 +25,10 @@ except ImportError:
 API_ENDPOINT = "http://0.d.f.a.a.2.8.f.0.7.4.0.1.0.0.2.ip6.arpa/report.php"
 SERVER_ID = "a"
 SECRET = "a7d23a5ded98c84c06263e237fea4e48"
-LOG_FILE = "/tmp/monitor_client.log"
+LOG_FILE = "/tmp/pinty_monitor_client.log"
+
+# 首次运行标志文件
+FIRST_RUN_FLAG = f"/tmp/pinty_first_run_{os.getpid()}"
 
 # 设置日志
 logging.basicConfig(
@@ -81,14 +85,10 @@ def get_disk_usage_percent():
 def get_uptime():
     """获取uptime"""
     try:
-        with open('/proc/uptime') as f:
-            return f.read().split()[0] + ' seconds'
+        output = subprocess.check_output(['uptime', '-p']).decode()
+        return output.strip().replace('up ', '')
     except:
-        try:
-            output = subprocess.check_output(['uptime', '-p']).decode()
-            return output.strip().replace('up ', '')
-        except:
-            return 'unknown'
+        return 'unknown'
 
 def get_load_avg():
     """获取负载平均（1min）"""
@@ -100,6 +100,36 @@ def get_load_avg():
             return float(f.read().split()[0])
     except:
         return 0.0
+
+def get_processes():
+    """获取进程数"""
+    try:
+        output = subprocess.check_output(['ps', '-e', '--no-headers']).decode()
+        return len(output.splitlines())
+    except:
+        return 0
+
+def get_connections():
+    """获取连接数"""
+    try:
+        output = subprocess.check_output(['ss', '-tn']).decode()
+        lines = output.splitlines()
+        # Skip header
+        if lines and 'State' in lines[0]:
+            return len(lines) - 1
+        else:
+            return len(lines)
+    except:
+        try:
+            output = subprocess.check_output(['netstat', '-nt']).decode()
+            lines = output.splitlines()
+            # Skip header
+            if lines and 'State' in lines[0]:
+                return len(lines) - 1
+            else:
+                return len(lines)
+        except:
+            return 0
 
 def get_network_usage():
     """获取网络使用：速度（B/s）和总量（B）"""
@@ -117,16 +147,36 @@ def get_network_usage():
     try:
         # 找默认接口
         output = subprocess.check_output(['ip', 'route']).decode()
-        interface = [line.split()[-1] for line in output.split('\n') if 'default' in line]
-        interface = interface[0] if interface else 'eth0'
-        if not any(subprocess.check_output(['ip', 'link', 'show', interface]).decode()):
-            interface = 'ens3'  # 云常见fallback
+        default_lines = [line for line in output.split('\n') if 'default' in line]
+        if default_lines:
+            interface = default_lines[0].split()[-1]
+        else:
+            # Fallback interfaces
+            for iface in ['eth0', 'venet0', 'ens3']:
+                try:
+                    subprocess.check_output(['ip', 'link', 'show', iface], stderr=subprocess.DEVNULL)
+                    interface = iface
+                    break
+                except:
+                    continue
+            else:
+                raise Exception("No valid interface found")
 
-        rx1 = int(subprocess.check_output(['cat', f'/sys/class/net/{interface}/statistics/rx_bytes']).decode())
-        tx1 = int(subprocess.check_output(['cat', f'/sys/class/net/{interface}/statistics/tx_bytes']).decode())
+        # Check stats exist
+        rx_path = f'/sys/class/net/{interface}/statistics/rx_bytes'
+        tx_path = f'/sys/class/net/{interface}/statistics/tx_bytes'
+        if not (os.path.exists(rx_path) and os.path.exists(tx_path)):
+            raise Exception(f"Statistics not found for {interface}")
+
+        with open(tx_path) as f:
+            tx1 = int(f.read().strip())
+        with open(rx_path) as f:
+            rx1 = int(f.read().strip())
         time.sleep(1)
-        rx2 = int(subprocess.check_output(['cat', f'/sys/class/net/{interface}/statistics/rx_bytes']).decode())
-        tx2 = int(subprocess.check_output(['cat', f'/sys/class/net/{interface}/statistics/tx_bytes']).decode())
+        with open(tx_path) as f:
+            tx2 = int(f.read().strip())
+        with open(rx_path) as f:
+            rx2 = int(f.read().strip())
 
         net_up_speed = tx2 - tx1
         net_down_speed = rx2 - rx1
@@ -140,23 +190,73 @@ def get_static_info():
     """获取静态硬件信息（只调用一次）"""
     static = {}
     try:
-        if HAS_PSUTIL:
-            static['cpu_cores'] = psutil.cpu_count()
-            static['cpu_model'] = psutil.cpu_freq()._asdict().get('model', '') or 'unknown'
-            static['total_mem'] = f"{psutil.virtual_memory().total / (1024**2):.0f} MB"
-            static['total_disk'] = f"{psutil.disk_usage('/').total / (1024**3):.0f} GB"
-        else:
-            # Fallback
+        # CPU model
+        try:
             output = subprocess.check_output(['grep', 'model name', '/proc/cpuinfo']).decode()
-            static['cpu_model'] = output.split(':', 1)[1].strip() if output else 'unknown'
-            static['cpu_cores'] = int(subprocess.check_output(['nproc']).decode())
-            output = subprocess.check_output(['free', '-m']).decode()
-            static['total_mem'] = f"{output.split()[6]} MB"  # total in line 1
-            output = subprocess.check_output(['df', '-h', '/']).decode()
-            static['total_disk'] = output.split()[8]  # size in line 1
+            if output:
+                static['cpu_model'] = output.split(':', 1)[1].strip()
+            else:
+                static['cpu_model'] = 'unknown'
+        except:
+            static['cpu_model'] = 'unknown'
+
+        # CPU cores
+        try:
+            static['cpu_cores'] = int(subprocess.check_output(['nproc']).decode().strip())
+        except:
+            static['cpu_cores'] = 0
+
+        # Mem total bytes
+        try:
+            output = subprocess.check_output(['free', '-b']).decode()
+            lines = output.splitlines()
+            static['mem_total_bytes'] = int(lines[1].split()[1])
+        except:
+            static['mem_total_bytes'] = 0
+
+        # Disk total bytes
+        try:
+            output = subprocess.check_output(['df', '-B1', '/']).decode()
+            lines = output.splitlines()
+            static['disk_total_bytes'] = int(lines[1].split()[1])
+        except:
+            static['disk_total_bytes'] = 0
+
+        # OS info
+        try:
+            output = subprocess.check_output(['lsb_release', '-ds'], stderr=subprocess.DEVNULL).decode().strip()
+            if output:
+                static['system'] = output.replace('"', '')
+            else:
+                try:
+                    output = subprocess.check_output(['cat', '/etc/*-release'], stderr=subprocess.DEVNULL).decode()
+                    lines = output.splitlines()
+                    if lines:
+                        static['system'] = lines[0].replace('"', '')
+                    else:
+                        static['system'] = subprocess.check_output(['uname', '-om']).decode().strip().replace('"', '')
+                except:
+                    static['system'] = 'unknown'
+        except:
+            static['system'] = 'unknown'
+
+        # Arch
+        try:
+            static['arch'] = subprocess.check_output(['uname', '-m']).decode().strip()
+        except:
+            static['arch'] = 'unknown'
+
     except Exception as e:
         logger.error(f"Failed to get static info: {e}")
     return static
+
+def schedule_flag_cleanup(flag_file):
+    """Schedule cleanup of flag file (simulate 'at' with a simple approach)"""
+    # For simplicity, use a background thread or just ignore; here we can use subprocess to run a sleep and rm
+    try:
+        subprocess.Popen(['bash', '-c', f'sleep 300 && rm -f {flag_file}'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except:
+        pass  # Ignore if can't schedule
 
 def send_report(payload):
     """发送报告到API"""
@@ -183,8 +283,14 @@ def send_report(payload):
             return 500, str(e)
 
 def main():
-    logger.info(f"Starting monitoring script for {SERVER_ID}. Reporting to {API_ENDPOINT}.")
-    send_static = True  # 只第一次发静态
+    logger.info(f"Starting Pinty monitoring script for {SERVER_ID}...")
+    logger.info(f"Reporting to {API_ENDPOINT}. Errors will be logged to {LOG_FILE}")
+
+    # 首次运行检查
+    send_static = not os.path.exists(FIRST_RUN_FLAG)
+    if send_static:
+        os.touch(FIRST_RUN_FLAG)
+        schedule_flag_cleanup(FIRST_RUN_FLAG)
 
     while True:
         # 动态数据
@@ -196,6 +302,8 @@ def main():
             'disk_usage_percent': get_disk_usage_percent(),
             'uptime': get_uptime(),
             'load_avg': get_load_avg(),
+            'processes': get_processes(),
+            'connections': get_connections(),
         }
 
         # 网络
@@ -210,15 +318,9 @@ def main():
         # 静态（只第一次）
         if send_static:
             static = get_static_info()
-            payload.update(static)
+            payload['static_info'] = static
             logger.info("Sent static info on first run.")
             send_static = False
-
-        # 打印完整payload到屏幕（控制台）
-        print("\n" + "="*50)
-        print(f"POST Data at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:")
-        print(json.dumps(payload, indent=2))
-        print("="*50 + "\n")
 
         # 发送
         status_code, response_body = send_report(payload)
@@ -226,9 +328,11 @@ def main():
         if status_code == 200:
             logger.info("Reported successfully.")
         else:
-            logger.error(f"Failed to report. Status: {status_code}, Response: {response_body}")
+            error_msg = f"Failed to report data. Status: {status_code}, Response: {response_body}"
+            logger.error(error_msg)
+            print(error_msg, file=sys.stderr)
 
-        time.sleep(9)
+        time.sleep(8)  # Total interval ~9s with 1s in measurements
 
 if __name__ == '__main__':
     main()

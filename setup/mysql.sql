@@ -15,8 +15,9 @@ CREATE TABLE IF NOT EXISTS servers (
     mem_total         BIGINT,
     disk_total        BIGINT,
     expiry_date       BIGINT,
-    price_usd_monthly DOUBLE,
-    price_usd_yearly  DOUBLE
+    country_code VARCHAR(10),
+    system TEXT,
+    arch VARCHAR(255)
 );
 
 -- 2. 性能快照
@@ -33,6 +34,8 @@ CREATE TABLE IF NOT EXISTS server_stats (
     total_down          BIGINT,
     uptime              VARCHAR(255),
     load_avg            DOUBLE,
+    processes           INT,
+    connections         INT,
     INDEX idx_stats_server_time (server_id, timestamp)
 );
 

@@ -12,7 +12,7 @@ header('Content-Type: application/json');
 try {
     $repo = new ServerRepository($db_config);
     $outagesRepo = new OutagesRepository($db_config); // 复用
-    $section = $_GET['section'] ?? 'all'; // 默认 'all' 兼容旧版，但推荐前端指定
+    $section = $_GET['action'] ?? 'all'; // 默认 'all' 兼容旧版，但推荐前端指定
     $serverId = $_GET['id'] ?? null;
     $limit = (int)($_GET['limit'] ?? 20); // 历史限量
 

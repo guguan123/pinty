@@ -26,9 +26,9 @@ class ServerRepository {
                     ip = :ip,
                     longitude = :longitude, 
                     latitude = :latitude, 
-                    intro = :intro, 
-                    price_usd_yearly = :price_usd_yearly, 
-                    expiry_date = :expiry_date 
+                    intro = :intro,
+                    expiry_date = :expiry_date,
+                    country_code = :country_code
                 WHERE id = :id";
         $params = [
             ':id' => $data['id'],
@@ -37,8 +37,8 @@ class ServerRepository {
             ':longitude' => $data['longitude'],
             ':latitude' => $data['latitude'],
             ':intro' => $data['intro'],
-            ':price_usd_yearly' => $data['price_usd_yearly'],
-            ':expiry_date' => $data['expiry_date']
+            ':expiry_date' => $data['expiry_date'],
+            ':country_code' => $data['country_code']
         ];
         return $this->db->execute($sql, $params) > 0; // 返回是否更新成功
     }
@@ -120,7 +120,7 @@ class ServerRepository {
      */
     public function createServer($data) {
         $secret = bin2hex(random_bytes(16));  // 生成16字节随机secret
-        $sql = "INSERT INTO servers (id, name, ip, latitude, longitude, intro, expiry_date, price_usd_monthly, price_usd_yearly, tags, secret) VALUES (:id, :name, :ip, :latitude, :longitude, :intro, :expiry_date, :price_usd_monthly, :price_usd_yearly, :tags, :secret)";
+        $sql = "INSERT INTO servers (id, name, ip, latitude, longitude, intro, expiry_date, tags, secret, country_code) VALUES (:id, :name, :ip, :latitude, :longitude, :intro, :expiry_date, :tags, :secret, :country_code)";
         // 修复：动态添加:前缀到data键，确保PDO绑定正确（兼容所有DB）
         $params = [':id' => $data['id'], ':secret' => $secret];
         foreach ($data as $key => $value) {
@@ -184,15 +184,19 @@ class ServerRepository {
      * @param string|null $cpuModel
      * @param int|null $memTotal
      * @param int|null $diskTotal
+     * @param string|null $system
+     * @param string|null $arch
      */
-    public function updateHardware($serverId, $cpuCores = null, $cpuModel = null, $memTotal = null, $diskTotal = null) {
+    public function updateHardware($serverId, $cpuCores = null, $cpuModel = null, $memTotal = null, $diskTotal = null, $system = null, $arch = null) {
         $sql = "UPDATE servers SET 
                     cpu_cores = COALESCE(?, cpu_cores),
                     cpu_model = COALESCE(?, cpu_model),
                     mem_total = COALESCE(?, mem_total),
-                    disk_total = COALESCE(?, disk_total)
+                    disk_total = COALESCE(?, disk_total),
+                    system = COALESCE(?, system),
+                    arch = COALESCE(?, arch)
                 WHERE id = ?";
-        $params = [$cpuCores, $cpuModel, $memTotal, $diskTotal, $serverId];
+        $params = [$cpuCores, $cpuModel, $memTotal, $diskTotal, $system, $arch, $serverId];
         $this->db->execute($sql, $params);
     }
 

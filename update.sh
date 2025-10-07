@@ -1,27 +1,42 @@
 #!/bin/bash
 
+# ==============================================================================
+# Pinty Monitor Client Script v2.0
+# ==============================================================================
+# 请在这里配置您的信息
+# ------------------------------------------------------------------------------
 # API端点，用于接收状态报告
-API_ENDPOINT=""
+API_ENDPOINT="http://0.d.f.a.a.2.8.f.0.7.4.0.1.0.0.2.ip6.arpa/report.php"
 # 服务器的唯一ID (与管理员后台设置的ID匹配)
-SERVER_ID=""
+SERVER_ID="a"
 # 每个服务器独立的密钥 (从管理员后台复制)
-SECRET=""
-# 错误报告日志文件
-LOG_FILE="/var/log/monitor_client.log"
+SECRET="a7d23a5ded98c84c06263e237fea4e48"
+# ==============================================================================
 
-# --- 脚本 ---
-echo "Starting monitoring script for $SERVER_ID..."
+# 错误报告日志文件
+LOG_FILE="pinty_monitor_client.log"
+
+echo "Starting Pinty monitoring script for $SERVER_ID..."
 echo "Reporting to $API_ENDPOINT. Errors will be logged to $LOG_FILE"
+
+# --- 函数定义 ---
 
 # 获取网络使用情况的函数
 get_network_usage() {
     INTERFACE=$(ip route | grep '^default' | awk '{print $5}' | head -n 1)
     if [ -z "$INTERFACE" ]; then
         if ip link show eth0 > /dev/null 2>&1; then INTERFACE="eth0";
-        elif ip link show warp > /dev/null 2>&1; then INTERFACE="warp";
-        else echo "Error: Could not determine a valid network interface." >&2; return; fi
+        elif ip link show venet0 > /dev/null 2>&1; then INTERFACE="venet0"; # For OpenVZ
+        elif ip link show ens3 > /dev/null 2>&1; then INTERFACE="ens3"; # Common alternative
+        else echo "Error: Could not determine a valid network interface." >&2; return 1; fi
     fi
     
+    # Check if interface stats exist
+    if [ ! -f "/sys/class/net/$INTERFACE/statistics/rx_bytes" ]; then
+        echo "Error: Statistics not found for interface $INTERFACE." >&2
+        return 1
+    fi
+
     RX_BYTES_START=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
     TX_BYTES_START=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
     sleep 1
@@ -37,21 +52,34 @@ get_network_usage() {
 }
 
 # --- 首次运行时获取静态信息 ---
-CPU_MODEL=$(grep 'model name' /proc/cpuinfo | head -n 1 | cut -d ':' -f 2 | sed 's/^[ \t]*//')
-CPU_CORES=$(nproc)
-TOTAL_MEM=$(free -m | awk 'NR==2{print $2}')" MB"
-TOTAL_DISK=$(df -h / | awk 'NR==2{print $2}')
+# 使用一个标志文件来判断是否是首次运行
+FIRST_RUN_FLAG="/tmp/pinty_first_run_$$"
+if [ ! -f "$FIRST_RUN_FLAG" ]; then
+    CPU_MODEL=$(grep 'model name' /proc/cpuinfo | head -n 1 | cut -d ':' -f 2 | sed 's/^[ \t]*//')
+    CPU_CORES=$(nproc)
+    MEM_TOTAL_BYTES=$(free -b | awk 'NR==2{print $2}')
+    DISK_TOTAL_BYTES=$(df -B1 / | awk 'NR==2{print $2}')
+    OS_INFO=$( (lsb_release -ds 2>/dev/null || cat /etc/*-release 2>/dev/null | head -n1 || uname -om) | tr -d '"' )
+    ARCH=$(uname -m)
 
-STATIC_INFO_JSON=$(cat <<EOF
+    STATIC_INFO_JSON=$(cat <<EOF
 ,
 "static_info": {
     "cpu_model": "$CPU_MODEL",
-    "cpu_cores": $CPU_CORES,
-    "total_mem": "$TOTAL_MEM",
-    "total_disk": "$TOTAL_DISK"
+    "cpu_cores": ${CPU_CORES:-0},
+    "mem_total_bytes": ${MEM_TOTAL_BYTES:-0},
+    "disk_total_bytes": ${DISK_TOTAL_BYTES:-0},
+    "system": "$OS_INFO",
+    "arch": "$ARCH"
 }
 EOF
 )
+    touch "$FIRST_RUN_FLAG"
+    # 添加一个at job，在脚本退出后一段时间删除标志文件，以备重启
+    echo "rm -f $FIRST_RUN_FLAG" | at now + 5 minutes > /dev/null 2>&1
+else
+    STATIC_INFO_JSON=""
+fi
 # --- 静态信息获取结束 ---
 
 # 主循环
@@ -61,7 +89,13 @@ while true; do
     DISK_USAGE=$(df / | awk 'NR==2{print $5}' | sed 's/%//')
     UPTIME=$(uptime -p | sed 's/up //')
     LOAD_AVG=$(awk '{print $1}' /proc/loadavg)
-    NET_USAGE=$(get_network_usage)
+    PROCESSES=$(ps -e --no-headers | wc -l)
+    CONNECTIONS=$( (ss -tn | grep -v 'State' | wc -l) || (netstat -nt | grep -v 'State' | wc -l) )
+    
+    NET_USAGE_JSON=$(get_network_usage)
+    if [ $? -ne 0 ]; then
+        NET_USAGE_JSON='"net_up_speed": 0, "net_down_speed": 0, "total_up": 0, "total_down": 0'
+    fi
 
     JSON_PAYLOAD=$(cat <<EOF
 {
@@ -72,16 +106,26 @@ while true; do
     "disk_usage_percent": ${DISK_USAGE:-0},
     "uptime": "$UPTIME",
     "load_avg": ${LOAD_AVG:-0},
-    ${NET_USAGE:-"\"net_up_speed\": 0, ..."}
+    "processes": ${PROCESSES:-0},
+    "connections": ${CONNECTIONS:-0},
+    ${NET_USAGE_JSON}
     ${STATIC_INFO_JSON}
 }
 EOF
 )
+    
     # 首次报告后，不再发送静态信息以节省带宽
     STATIC_INFO_JSON=""
 
-    HTTP_RESPONSE=$(curl --write-out "HTTPSTATUS:%{http_code}" -s -X POST -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "$API_ENDPOINT")
+    # 在发送数据前打印所有数据
+    echo "=== Sending data to API ==="
+    echo "$JSON_PAYLOAD"
+    echo "=========================="
+
+    HTTP_RESPONSE=$(curl --write-out "HTTPSTATUS:%{http_code}" -X POST -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "$API_ENDPOINT")
     
+    echo $HTTP_RESPONSE
+
     HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
     HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
     
@@ -89,9 +133,7 @@ EOF
         ERROR_MSG="[$(date)] - Failed to report data. Status: $HTTP_STATUS, Response: $HTTP_BODY"
         echo "$ERROR_MSG" >&2
         echo "$ERROR_MSG" >> "$LOG_FILE"
-    else
-        :
     fi
 
-    sleep 9
+    sleep 8 # sleep 8s + 1s from network = 9s interval
 done

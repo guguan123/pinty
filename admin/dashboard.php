@@ -13,8 +13,8 @@ require_once __DIR__ . '/../config.php';
 use GuGuan123\Pinty\Repositories\ServerRepository;
 use GuGuan123\Pinty\Repositories\SettingsRepository;
 
-$message = '';
-$error_message = '';
+$message = false;
+$error_message = false;
 
 try {
     $serverRepo = new ServerRepository($db_config);
@@ -31,10 +31,22 @@ try {
         $message = "服务器 '{$serverName}' 及其所有数据已成功删除！";
     }
 
+    // Handle New Secret Generation
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_secret'])) {
+        $new_secret = bin2hex(random_bytes($length = 32 / 2));
+        $stmt = $pdo->prepare("UPDATE servers SET secret = ? WHERE id = ?");
+        $stmt->execute([$new_secret, $_POST['generate_secret_id']]);
+        $message = "为服务器 '{$_POST['generate_secret_id']}' 生成了新的密钥！";
+    }
+
     // 保存服务器
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_server'])) {
         if (empty($_POST['id'])) {
             throw new Exception('服务器ID不能为空。');
+        }
+        $country_code = strtoupper(trim($_POST['country_code']));
+        if (!empty($country_code) && !preg_match('/^[A-Z]{2}$/', $country_code)) {
+            throw new Exception("国家代码必须是两位英文字母。");
         }
 
         // 准备数据
@@ -46,9 +58,8 @@ try {
             'longitude' => !empty($_POST['longitude']) ? (float)$_POST['longitude'] : null,
             'intro' => $_POST['intro'] ?? '',
             'expiry_date' => empty($_POST['expiry_date']) ? null : strtotime($_POST['expiry_date']),
-            'price_usd_monthly' => !empty($_POST['price_usd_monthly']) ? (float)$_POST['price_usd_monthly'] : null,
-            'price_usd_yearly' => !empty($_POST['price_usd_yearly']) ? (float)$_POST['price_usd_yearly'] : null,
             'tags' => !empty($_POST['tags']) ? implode(',', array_map('trim', explode(',', $_POST['tags']))) : null,
+            'country_code' => $country_code ?? NULL
         ];
 
         if (empty($_POST['is_editing'])) {
@@ -63,21 +74,29 @@ try {
             $message = "服务器 '{$data['name']}' 已成功更新！";
         }
     }
+    
+    // 保存通用设置
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
+        $settingsRepo->saveSetting('site_name', $_POST['site_name'] ?? NULL);
+        $message = "通用设置已保存！";
+    }
 
     // 保存 Telegram 设置
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_telegram'])) {
-        $settingsRepo->saveSetting('telegram_bot_token', $_POST['telegram_bot_token'] ?? '');
-        $settingsRepo->saveSetting('telegram_chat_id', $_POST['telegram_chat_id'] ?? '');
+        $settingsRepo->saveSetting('telegram_bot_token', $_POST['telegram_bot_token'] ?? NULL);
+        $settingsRepo->saveSetting('telegram_chat_id', $_POST['telegram_chat_id'] ?? NULL);
         $message = "Telegram 设置已保存！";
     }
 
-    // Fetch data for display
+    // 获取所有服务器列表
     $servers = $serverRepo->getAllServers();
+
+    // 获取设置信息
+    $site_name = $settingsRepo->getSetting('site_name') ?: '';
     $telegram_bot_token = $settingsRepo->getSetting('telegram_bot_token') ?: '';
     $telegram_chat_id = $settingsRepo->getSetting('telegram_chat_id') ?: '';
 
 } catch (Exception $e) {
-    error_log("Dashboard error: " . $e->getMessage());  // 日志化
     $error_message = "操作失败: " . $e->getMessage();
 }
 ?>
@@ -86,46 +105,14 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - Plexure Monitor</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 2rem; color: #333; }
-        .container { max-width: 1200px; margin: 0 auto; background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #dee2e6; padding-bottom: 1rem; margin-bottom: 2rem; }
-        h1, h2 { color: #111; margin-top: 0; }
-        h2 { border-bottom: 1px solid #eee; padding-bottom: 0.5rem; margin-top: 2rem; }
-        a.logout { text-decoration: none; background: #343a40; color: #fff; padding: 0.5rem 1rem; border-radius: 5px; transition: background 0.2s; }
-        a.logout:hover { background: #495057; }
-        .message { background: #28a745; color: #fff; padding: 1rem; border-radius: 5px; margin-bottom: 1rem; }
-        .error-message { background: #dc3545; color: #fff; padding: 1rem; border-radius: 5px; margin-bottom: 1rem; }
-        table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; font-size: 0.9em; }
-        th, td { text-align: left; padding: 0.9rem 0.7rem; border-bottom: 1px solid #dee2e6; vertical-align: middle; }
-        th { background-color: #f8f9fa; font-weight: 600; }
-        tr:hover { background-color: #f8f9fa; }
-        form { margin: 0; }
-        label { font-weight: 600; display: block; margin-bottom: 0.4rem; font-size: 0.9em; }
-        input[type="text"], input[type="number"], input[type="date"], textarea { width: 100%; padding: 0.6rem; border: 1px solid #ced4da; border-radius: 4px; box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s; }
-        input:focus, textarea:focus { border-color: #80bdff; outline: 0; box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25); }
-        input[readonly] { background: #e9ecef; cursor: not-allowed; }
-        button { background-color: #007bff; color: #fff; border: none; padding: 0.6rem 1.2rem; border-radius: 5px; cursor: pointer; transition: background-color 0.2s; font-weight: 600; }
-        button:hover { background-color: #0056b3; }
-        button.delete { background-color: #dc3545; }
-        button.delete:hover { background-color: #c82333; }
-        button.secondary { background-color: #6c757d; }
-        button.secondary:hover { background-color: #5a6268; }
-        .section { margin-bottom: 3rem; }
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.2rem; align-items: flex-start; margin-bottom: 1.2rem; }
-        details { border: 1px solid #dee2e6; padding: 1.5rem; border-radius: 5px; margin-bottom: 1rem; background: #fdfdfd; }
-        summary { font-weight: 600; cursor: pointer; font-size: 1.1em; }
-        .actions-cell { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-        .secret-wrapper { display: flex; align-items: center; gap: 0.5rem; }
-        .secret-wrapper input { flex-grow: 1; }
-    </style>
+    <title>管理员面板 - Pinty Monitor</title>
+    <link rel="stylesheet" href="../assets/css/admin-dash.css">
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>Admin Dashboard</h1>
-            <a href="logout.php" class="logout">Logout</a>
+            <h1>管理员面板</h1>
+            <a href="logout.php" class="logout">登出</a>
         </div>
         
         <?php if ($message): ?><p class="message"><?php echo htmlspecialchars($message); ?></p><?php endif; ?>
@@ -133,14 +120,26 @@ try {
 
         <div class="section">
             <details>
+                <summary>通用设置</summary>
+                <form action="dashboard.php" method="post" style="margin-top: 1.5rem;">
+                    <div class="form-grid">
+                        <div><label for="site_name">站点名称</label><input id="site_name" type="text" name="site_name" value="<?php echo htmlspecialchars($site_name); ?>"></div>
+                    </div>
+                    <button type="submit" name="save_settings">保存设置</button>
+                </form>
+            </details>
+        </div>
+
+        <div class="section">
+            <details>
                 <summary>Telegram 通知设置</summary>
                 <form action="dashboard.php" method="post" style="margin-top: 1.5rem;">
                     <p>当服务器掉线时，系统会自动发送通知。请按照部署指南获取Token和Chat ID。</p>
                     <div class="form-grid">
-                        <div><label for="tg-token">Bot Token</label><input id="tg-token" type="text" name="telegram_bot_token" value="<?php echo htmlspecialchars($telegram_bot_token); ?>" placeholder="例如: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"></div>
-                        <div><label for="tg-chat">Channel/User ID</label><input id="tg-chat" type="text" name="telegram_chat_id" value="<?php echo htmlspecialchars($telegram_chat_id); ?>" placeholder="例如: -100123456789 or 12345678"></div>
+                        <div><label for="tg-token">Telegram Bot Token</label><input id="tg-token" type="text" name="telegram_bot_token" value="<?php echo htmlspecialchars($telegram_bot_token); ?>" placeholder="例如: 123456:ABC-DEF..."></div>
+                        <div><label for="tg-chat">Telegram Channel/User ID</label><input id="tg-chat" type="text" name="telegram_chat_id" value="<?php echo htmlspecialchars($telegram_chat_id); ?>" placeholder="例如: -100123456789 or 12345678"></div>
                     </div>
-                    <button type="submit" name="save_telegram">保存Telegram设置</button>
+                    <button type="submit" name="save_telegram">保存设置</button>
                 </form>
             </details>
         </div>
@@ -153,18 +152,19 @@ try {
                     <div class="form-grid">
                         <div><label>服务器 ID (唯一, 英文)</label><input type="text" name="id" required></div>
                         <div><label>服务器名称</label><input type="text" name="name" required></div>
+                        <div><label>国家/地区代码 (两位字母)</label><input type="text" name="country_code" placeholder="例如: CN, JP, US" maxlength="2" style="text-transform:uppercase"></div>
                         <div><label>服务器 IP 地址</label><input type="text" name="ip" placeholder="留空则不验证IP"></div>
-                        <div><label>月付价格 (USD)</label><input type="number" step="0.01" name="price_usd_monthly"></div>
                     </div>
                     <div class="form-grid">
-                        <div><label>年付价格 (USD)</label><input type="number" step="0.01" name="price_usd_yearly"></div>
                         <div><label>经度 (地图X坐标)</label><input type="number" step="any" name="longitude" placeholder="例如: 1083"></div>
                         <div><label>纬度 (地图Y坐标)</label><input type="number" step="any" name="latitude" placeholder="例如: 228"></div>
                         <div><label>标签 (逗号分隔)</label><input type="text" name="tags" placeholder="例如: 亚洲,主力,高防"></div>
                     </div>
                     <div><label>简介</label><textarea name="intro" rows="3"></textarea></div>
-                    <button type="submit" name="save_server">保存服务器</button>
-                    <button type="button" class="secondary" id="cancel-edit-btn" style="display: none;">取消编辑</button>
+                    <div style="margin-top: 1.2rem;">
+                        <button type="submit" name="save_server">保存服务器</button>
+                        <button type="button" class="secondary" id="cancel-edit-btn" style="display: none;">取消编辑</button>
+                    </div>
                 </form>
             </details>
         </div>
@@ -190,7 +190,7 @@ try {
                                 <button class="edit-btn" data-id="<?php echo htmlspecialchars($server['id']); ?>">修改</button>
                                 <form action="dashboard.php" method="post" onsubmit="return confirm('确定为 \'<?php echo htmlspecialchars($server['id']); ?>\' 生成一个新的密钥吗？旧密钥将立即失效！');" style="margin:0;">
                                      <input type="hidden" name="generate_secret_id" value="<?php echo htmlspecialchars($server['id']); ?>">
-                                     <button type="submit" name="generate_secret" class="secondary">生成新密钥</button>
+                                     <button type="submit" name="generate_secret" class="secondary">新密钥</button>
                                  </form>
                                 <form action="dashboard.php" method="post" onsubmit="return confirm('确定删除这台服务器及其所有监控数据吗？');" style="margin: 0;">
                                     <input type="hidden" name="id" value="<?php echo htmlspecialchars($server['id']); ?>">
@@ -230,20 +230,13 @@ try {
                     isEditingInput.value = '1';
                     
                     addEditForm.querySelector('input[name="name"]').value = server.name;
+                    addEditForm.querySelector('input[name="country_code"]').value = server.country_code || '';
                     addEditForm.querySelector('input[name="longitude"]').value = server.longitude;
                     addEditForm.querySelector('input[name="latitude"]').value = server.latitude;
                     addEditForm.querySelector('input[name="ip"]').value = server.ip; 
                     addEditForm.querySelector('input[name="tags"]').value = server.tags;
                     addEditForm.querySelector('textarea[name="intro"]').value = server.intro;
-                    addEditForm.querySelector('input[name="price_usd_yearly"]').value = server.price_usd_yearly;
                     
-                    if (server.expiry_date) {
-                        const date = new Date(server.expiry_date * 1000);
-                        addEditForm.querySelector('input[name="expiry_date"]').value = date.toISOString().split('T')[0];
-                    } else {
-                        addEditForm.querySelector('input[name="expiry_date"]').value = '';
-                    }
-
                     addEditDetails.open = true;
                     cancelBtn.style.display = 'inline-block';
                     window.scrollTo({ top: addEditDetails.offsetTop, behavior: 'smooth' });

@@ -7,6 +7,7 @@ header('Content-Type: application/json');
 
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     http_response_code(403);
+    echo json_encode(['error' => 'Permission denied']);
     exit;
 }
 
