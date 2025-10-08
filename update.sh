@@ -6,11 +6,11 @@
 # 请在这里配置您的信息
 # ------------------------------------------------------------------------------
 # API端点，用于接收状态报告
-API_ENDPOINT="http://0.d.f.a.a.2.8.f.0.7.4.0.1.0.0.2.ip6.arpa/report.php"
+API_ENDPOINT="https://your-domain.com/report.php"
 # 服务器的唯一ID (与管理员后台设置的ID匹配)
-SERVER_ID="a"
+SERVER_ID="your-server-id"
 # 每个服务器独立的密钥 (从管理员后台复制)
-SECRET="a7d23a5ded98c84c06263e237fea4e48"
+SECRET="your-secret-key"
 # ==============================================================================
 
 # 错误报告日志文件
