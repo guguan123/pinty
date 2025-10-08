@@ -1,5 +1,5 @@
 <?php
-// api.php - 优化版：按需加载，支持 section 参数
+// api.php
 
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/config.php';
@@ -50,11 +50,11 @@ try {
 		case 'server':
 			// 单服务器详情：基本 + 历史 + stats
 			if (!$serverId || !$repo->existsById($serverId)) {
-				throw new Exception('Invalid server ID');
+				throw new \Exception('Invalid server ID');
 			}
 			$server = $repo->getServerById($serverId);
 			if (!$server) {
-				throw new Exception('Server not found');
+				throw new \Exception('Server not found');
 			}
 			$server['x'] = $server['latitude'];
 			$server['y'] = (float)($server['longitude'] ?? 0);
@@ -96,12 +96,22 @@ try {
 			break;
 
 		default:
-			throw new Exception('Invalid section: ' . $section);
+			throw new \Exception('Invalid section: ' . $section);
 	}
 
 	echo json_encode($response);
 
-} catch (Exception $e) {
+	if ($monitoring_execution_mode ?? true) {
+		try {
+			$monitoringService = new GuGuan123\Pinty\Services\MonitoringService($db_config); // 只传db_config
+			$monitoringService->checkAndNotify(); // 一键检查
+		} catch (\Exception $e) {
+			error_log("cron.php Error: " . $e->getMessage());
+			exit(1);
+		}
+	}
+
+} catch (\Exception $e) {
 	http_response_code(500);
 	echo json_encode(['error' => $e->getMessage()]);
 }

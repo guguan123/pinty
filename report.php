@@ -1,5 +1,5 @@
 <?php
-// report.php - v1.3 - 重构版：使用Composer autoload和Database封装，兼容MySQL
+// report.php
 
 error_reporting(0);
 ini_set('display_errors', 0);
@@ -85,6 +85,16 @@ try {
 	$pdo->commit();
 
 	echo json_encode(['success' => true]);
+
+	if ($monitoring_execution_mode ?? true) {
+		try {
+			$monitoringService = new GuGuan123\Pinty\Services\MonitoringService($db_config); // 只传db_config
+			$monitoringService->checkAndNotify(); // 一键检查
+		} catch (\Exception $e) {
+			error_log("cron.php Error: " . $e->getMessage());
+			exit(1);
+		}
+	}
 
 } catch (Exception $e) {
 	if ($pdo->inTransaction()) {
