@@ -39,8 +39,8 @@ try {
 				$node = array(
 					'id' => $server['id'],
 					'name' => $server['name'],
-					'latitude' => $server['latitude'],
-					'longitude' => (float)($server['longitude'] ?? 0),
+					'x' => $server['latitude'],
+					'y' => (float)($server['longitude'] ?? 0),
 					'intro' => $server['intro'] ?? '',
 					'tags' => $server['tags'] ?? null,
 					'mem_total' => $server['mem_total'],
