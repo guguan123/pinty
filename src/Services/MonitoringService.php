@@ -16,8 +16,6 @@ class MonitoringService {
 	private bool $enabledPush;
 	private string $botToken;
 	private string $chatId;
-	private string $executionMode;
-	private bool $isCronExecution; // 新增：标记是否为cron.php执行
 
 	public function __construct(array $dbConfig) {
 		$this->serverRepo = new ServerRepository($dbConfig);
@@ -68,35 +66,64 @@ class MonitoringService {
 
 	/**
 	 * 处理故障记录和通知（假设状态已更新）
+	 *
+	 * 设计思路：
+	 * 1. 一次性把「所有服务器」和「最新在线状态」全部拉回来，避免在循环里反复查库。
+	 * 2. 以服务器为单位，判断「当前是否在线」与「是否已存在未结束的故障记录」。
+	 * 3. 状态发生「离线→在线」或「在线→离线」切换时，才写库 + 发通知，避免重复打扰。
+	 * 4. 离线→在线：计算本次离线持续时长，更新故障记录的 end_time，发恢复通知。
+	 * 5. 在线→离线：新建一条故障记录，发离线警告。
+	 * 6. 通知渠道可插拔，目前只实现 Telegram；$this->enabledPush 为总开关。
 	 */
 	public function processOutagesAndNotifications(): void {
-		$servers = $this->serverRepo->getAllServers();
-		$onlineStatuses = $this->serverRepo->getOnlineStatuses();
+		/* 1. 批量获取服务器列表与实时在线状态（内存中操作，减少 I/O） */
+		$servers        = $this->serverRepo->getAllServers();      // 所有服务器基础信息
+		$onlineStatuses = $this->serverRepo->getOnlineStatuses();  // 键为 server_id，值为 bool
 
+		/* 2. 遍历每台服务器，判断是否需要创建或关闭故障记录 */
 		foreach ($servers as $server) {
-			$isCurrentlyOnline = $onlineStatuses[$server['id']] ?? false;
-			$activeOutage = $this->outagesRepo->getActiveOutageForServer($server['id']);
+			$isCurrentlyOnline = $onlineStatuses[$server['id']] ?? FALSE;          // 当前是否在线
+			$activeOutage      = $this->outagesRepo->getActiveOutageForServer($server['id']); // 未结束的故障
 
-			if (!$isCurrentlyOnline) {
+			/* 2.1 当前离线 */
+			if ($isCurrentlyOnline != 1) {
+				/* 如果还没有未结束的故障，则新建一条 */
 				if (!$activeOutage) {
-					$this->outagesRepo->createOutage($server['id'], '服务器掉线', '服务器停止报告数据。');
+					$this->outagesRepo->createOutage(
+						$server['id'],
+						'服务器掉线',
+						'服务器停止报告数据。'
+					);
+
+					/* 推送开关打开时，发离线警告 */
 					if ($this->enabledPush) {
-						$message = "🔴 *服务离线警告*\n\n服务器 `{$server['name']}` (`{$server['id']}`) 已停止响应。";
+						$message = "🔴 *服务离线警告*\n\n"
+								. "服务器 `{$server['name']}` (`{$server['id']}`) 已停止响应。";
 						$this->sendTelegramMessage($message);
 					}
 				}
-			} else {
+				/* 如果已存在未结束故障，说明早已记录，无需重复操作 */
+			}
+			/* 2.2 当前在线 */
+			else {
+				/* 若存在未结束的故障，说明刚刚恢复，需要“收尾” */
 				if ($activeOutage) {
-					$endTime = time();
-					$duration = $endTime - $activeOutage['start_time'];
-					$durationStr = $this->formatDuration($duration);
+					$endTime     = time();  // 恢复时间戳
+					$duration    = $endTime - $activeOutage['start_time']; // 持续秒数
+					$durationStr = $this->formatDuration($duration);       // 格式化为人类可读
+
+					/* 更新故障记录的结束时间 */
 					$this->outagesRepo->updateOutageEndTime($activeOutage['id'], $endTime);
 
+					/* 推送开关打开时，发恢复通知 */
 					if ($this->enabledPush) {
-						$message = "✅ *服务恢复通知*\n\n服务器 `{$server['name']}` (`{$server['id']}`) 已恢复在线。\n持续离线时间：约 {$durationStr}。";
+						$message = "✅ *服务恢复通知*\n\n"
+								. "服务器 `{$server['name']}` (`{$server['id']}`) 已恢复在线。\n"
+								. "持续离线时间：约 {$durationStr}。";
 						$this->sendTelegramMessage($message);
 					}
 				}
+				/* 若不存在未结束故障，说明一直正常，无需任何操作 */
 			}
 		}
 	}

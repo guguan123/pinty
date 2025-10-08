@@ -101,13 +101,12 @@ try {
 
 	echo json_encode($response);
 
-	if ($monitoring_execution_mode ?? true) {
+	if (!isset($monitoring_execution_mode) || (isset($monitoring_execution_mode) && $monitoring_execution_mode == true)) {
 		try {
-			$monitoringService = new GuGuan123\Pinty\Services\MonitoringService($db_config); // 只传db_config
-			$monitoringService->checkAndNotify(); // 一键检查
+			$monitoringService = new GuGuan123\Pinty\Services\MonitoringService($db_config);
+			$monitoringService->checkAndNotify();
 		} catch (\Exception $e) {
-			error_log("cron.php Error: " . $e->getMessage());
-			exit(1);
+			error_log("Cron Error: " . $e->getMessage());
 		}
 	}
 
