@@ -31,17 +31,39 @@ try {
 			$online_status = $repo->getOnlineStatuses();
 			$latest_stats = $repo->getLatestStats();
 
-			$nodes = [];
-			foreach ($servers as $node) {
-				$node_id = $node['id'];
-				$node['x'] = $node['latitude'];
-				$node['y'] = (float)($node['longitude'] ?? 0);
-				$node['stats'] = $latest_stats[$node_id] ?? [];
-				$node['is_online'] = (bool)($online_status[$node_id] ?? false);
-				if (!$node['is_online']) {
-					$node['anomaly_msg'] = '服务器掉线';
-				}
-				// 无历史，节省流量
+			$nodes = array();
+			foreach ($servers as $server) {
+				$node_id = $server['id'];
+				$stats = $latest_stats[$node_id] ?? NULL;
+				
+				$node = array(
+					'id' => $server['id'],
+					'name' => $server['name'],
+					'latitude' => $server['latitude'],
+					'longitude' => (float)($server['longitude'] ?? 0),
+					'intro' => $server['intro'] ?? '',
+					'tags' => $server['tags'] ?? null,
+					'mem_total' => $server['mem_total'],
+					'disk_total' => $server['disk_total'],
+					'expiry_date' => $server['expiry_date'] ?? null,
+					'country_code' => $server['country_code'],
+					'is_online' => (bool)($online_status[$node_id] ?? false),
+					'stats' => array(
+						'timestamp' => $stats['timestamp'] ?? NULL,
+						'cpu_usage' => $stats['cpu_usage'] ?? NULL,
+						'mem_usage_percent' => $stats['mem_usage_percent'] ?? NULL,
+						'disk_usage_percent' => $stats['disk_usage_percent'] ?? NULL,
+						'net_up_speed' => $stats['net_up_speed'] ?? NULL,
+						'net_down_speed' => $stats['net_down_speed'] ?? NULL,
+						'total_up' => $stats['total_up'] ?? NULL,
+						'total_down' => $stats['total_down'] ?? NULL,
+						'uptime' => $stats['uptime'] ?? NULL,
+						'load_avg' => $stats['load_avg'] ?? NULL,
+						'processes' => $stats['processes'] ?? NULL,
+						'connections' => $stats['connections'] ?? NULL
+					)
+				);
+				
 				$nodes[] = $node;
 			}
 			$response['nodes'] = $nodes;
