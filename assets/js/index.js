@@ -321,8 +321,8 @@ document.addEventListener('DOMContentLoaded', () => {
 		
 		// 遍历每个掉线事件（假设 outages 已按 start_time 倒序排序）
 		outages.forEach(outage => {
-			// 生成节点名称：如果找到节点，使用国旗 Emoji + 名称；否则使用 server_id 作为 fallback
-			const nodeName = `${getFlagEmoji(outage.country_code)} ${outage.name}`;
+			// 生成节点名称：如果找到节点，使用国旗 Emoji + 名称
+			const nodeName = `${getFlagEmoji(outage.country_code)} ${outage.server_name}`;
 			
 			// 格式化开始时间为本地化字符串（中文使用 'zh-CN' 格式，其他语言默认）
 			const startTime = new Date(outage.start_time * 1000).toLocaleString(currentLang.startsWith('zh') ? 'zh-CN' : undefined);
