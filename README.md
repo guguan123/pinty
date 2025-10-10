@@ -27,6 +27,10 @@ SECRET="a7d23a5ded98c84c06263e237fea4e48"
 
 3. 运行脚本
 
+## ToDo
+
+修复节点掉线时间不刷新的Bug
+
 ## API
 
 端点： /api.php
