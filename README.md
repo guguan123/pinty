@@ -79,5 +79,5 @@ SECRET="a7d23a5ded98c84c06263e237fea4e48"
 
 ## 许可证
 
-除了 index.html、update.sh、db_fix.php、edit_server.php、assets/css/admin-dash.css、assets/css/index.css、assets/js/index.js、admin/logout.php、admin/generate_secret.php、admin/dashboard.php
+除了 index.html、update.sh、edit_server.php、assets/css/admin-dash.css、assets/css/index.css、admin/logout.php、admin/generate_secret.php、admin/dashboard.php
 版权归原作者[Crozono](https://www.nodeloc.com/u/synastie)所有，其余均以 [MIT](https://choosealicense.com/licenses/mit/) 许可证发行
