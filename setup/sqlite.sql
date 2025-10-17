@@ -41,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_stats_server_time ON server_stats(server_id, time
 CREATE TABLE IF NOT EXISTS server_status (
 	id            TEXT PRIMARY KEY,
 	is_online     INTEGER DEFAULT 0,
-	last_checked  INTEGER
+	last_checked  TEXT
 );
 
 -- 故障记录

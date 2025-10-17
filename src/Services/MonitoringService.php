@@ -27,7 +27,7 @@ class MonitoringService {
 			$this->botToken = $this->settingsRepo->getSetting('telegram_bot_token') ?? '';
 			$this->chatId = $this->settingsRepo->getSetting('telegram_chat_id') ?? '';
 			if (empty($this->botToken) || empty($this->chatId)) {
-				error_log('Telegram bot token or chat ID is not configured.');
+				//error_log('Telegram bot token or chat ID is not configured.');
 				$this->enabledPush = false; // 禁用推送
 			}
 		}
@@ -38,16 +38,12 @@ class MonitoringService {
 	 * 可在任何脚本中调用，比如服务器上报后
 	 */
 	public function checkAndNotify(): void {
-		try {
-			$this->updateOfflineStatuses();
-			$this->processOutagesAndNotifications();
-		} catch (\Exception $e) {
-			error_log("MonitoringService Error: " . $e->getMessage());
-		}
+		$this->processOutagesAndNotifications();
+		$this->updateOfflineStatuses();
 	}
 
 	/**
-	 * 更新离线状态（不处理通知）
+	 * 更新离线状态
 	 */
 	public function updateOfflineStatuses(): void {
 		$currentTime = time();
@@ -58,8 +54,8 @@ class MonitoringService {
 				$latestStat = $this->serverRepo->getLatestStats()[$serverId] ?? null;
 				$latestTimestamp = strtotime($latestStat['timestamp']);
 				if ($latestStat && ($currentTime - $latestTimestamp > self::OFFLINE_THRESHOLD)) {
-					$this->serverRepo->updateStatus($serverId, false, $currentTime);
-					error_log("Server '{$serverId}' marked as offline due to timeout.");
+					$this->serverRepo->updateStatus($serverId, false, date('Y-m-d H:i:s'));
+					//error_log("Server '{$serverId}' marked as offline due to timeout.");
 				}
 			}
 		}

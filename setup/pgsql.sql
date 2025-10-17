@@ -41,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_stats_server_time ON server_stats(server_id, time
 CREATE TABLE IF NOT EXISTS server_status (
 	id            VARCHAR(255) PRIMARY KEY,
 	is_online     BOOLEAN NOT NULL DEFAULT false,
-	last_checked  BIGINT
+	last_checked  TIMESTAMP WITHOUT TIME ZONE
 );
 
 -- 故障记录

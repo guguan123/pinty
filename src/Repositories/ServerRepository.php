@@ -116,7 +116,28 @@ class ServerRepository {
 	public function getServerById($id) {
 		$sql = "SELECT * FROM servers WHERE id = :id LIMIT 1";
 		$params = [':id' => $id];
-		return $this->db->fetchAll($sql, $params)[0] ?? null;
+		$record = $this->db->fetchAll($sql, $params)[0] ?? NULL;
+
+		if ($record != NULL) {
+			return array(
+				'id' => $record['id'],
+				'name' => $record['name'],
+				'latitude' => $record['latitude'],
+				'longitude' => $record['longitude'],
+				'intro' => $record['intro'],
+				'tags' => $record['tags'],
+				'cpu_cores' => $record['cpu_cores'],
+				'cpu_model' => $record['cpu_model'],
+				'mem_total' => $record['mem_total'],
+				'disk_total' => $record['disk_total'],
+				'expiry_date' => $record['expiry_date'],
+				'country_code' => $record['country_code'],
+				'system' => $record['system'],
+				'arch' => $record['arch']
+			);
+		} else {
+			return NULL;
+		}
 	}
 
 	/**
@@ -213,7 +234,7 @@ class ServerRepository {
 	public function updateStatus($serverId, $isOnline = true, $lastChecked = null) {
 		$driver = $this->db->getDriverName();
 		$isOnlineVal = $isOnline ? 1 : 0;
-		$lastCheckedVal = $lastChecked ?? time();
+		$lastCheckedVal = $lastChecked ?? date('Y-m-d H:i:s');
 
 		if ($driver === 'pgsql') {
 			$sql = "INSERT INTO server_status (id, is_online, last_checked) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET is_online = ?, last_checked = ?";

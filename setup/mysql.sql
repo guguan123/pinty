@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS server_stats (
 CREATE TABLE IF NOT EXISTS server_status (
 	id            VARCHAR(255) PRIMARY KEY,
 	is_online     TINYINT(1) NOT NULL DEFAULT 0,
-	last_checked  BIGINT
+	last_checked  DATETIME
 );
 
 -- 4. 故障记录

@@ -14,8 +14,8 @@ try {
 	$repo = new ServerRepository($db_config);
 	$outagesRepo = new OutagesRepository($db_config);
 	$settingsRepo = new SettingsRepository($db_config);
-	$section = $_GET['action'] ?? 'all'; // 默认 'all' 兼容旧版，但推荐前端指定
-	$serverId = $_GET['id'] ?? null;
+	$section = $_GET['action'] ?? NULL; // 默认 'all' 兼容旧版，但推荐前端指定
+	$serverId = $_GET['id'] ?? NULL;
 	$limit = (int)($_GET['limit'] ?? 20); // 历史限量
 
 	$response = [];
@@ -95,29 +95,6 @@ try {
 		case 'outages':
 			// 返回故障列表
 			$response['outages'] = $outagesRepo->getRecentOutages($limit); // 支持 limit
-			break;
-
-		case 'all':
-			// 兼容旧版：全量（但不推荐长期用）
-			$servers = $repo->getAllServers();
-			$online_status = $repo->getOnlineStatuses();
-			$latest_stats = $repo->getLatestStats();
-
-			$nodes = [];
-			foreach ($servers as $node) {
-				$node_id = $node['id'];
-				$node['x'] = $node['latitude'];
-				$node['y'] = (float)($node['longitude'] ?? 0);
-				$node['stats'] = $latest_stats[$node_id] ?? [];
-				$node['is_online'] = (bool)($online_status[$node_id] ?? false);
-				if (!$node['is_online']) {
-					$node['anomaly_msg'] = '服务器掉线';
-				}
-				$node['history'] = array_reverse($repo->getServerHistory($node_id, $limit));
-				$nodes[] = $node;
-			}
-			$response['nodes'] = $nodes;
-			$response['outages'] = $outagesRepo->getRecentOutages(50);
 			break;
 
 		default:

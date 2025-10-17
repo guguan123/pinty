@@ -256,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			const cpu = parseFloat(stats.cpu_usage || 0);
 			const mem = parseFloat(stats.mem_usage_percent || 0);
 			const disk = parseFloat(stats.disk_usage_percent || 0);
-			const uptime = isOffline ? (formatDuration(Date.now() - node.last_checked || 0)) : (stats.uptime || '...');
+			const uptime = isOffline ? (formatDuration((Date.parse(node.last_checked) - Date.parse(stats.timestamp)) / 1000 || 0)) : (stats.uptime || '...');
 
 			card.innerHTML = `
 				<div class="card-header">
@@ -391,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
 					<div class="modal-info-item"><strong>${translations[currentLang].info_cpu}:</strong><p>${node.cpu_model || 'N/A'}</p></div>
 					<div class="modal-info-item"><strong>${translations[currentLang].info_ram}:</strong><p>${formatBytes(node.mem_total, 2) || 'N/A'}</p></div>
 					<div class="modal-info-item"><strong>${translations[currentLang].info_disk}:</strong><p>${formatBytes(node.disk_total, 2) || 'N/A'}</p></div>
-					${isOffline ? `<div class="modal-info-item"><strong>${translations[currentLang].info_outage}:</strong><p>${formatDuration(node.outage_duration || 0)}</p></div>` : ''}
+					${isOffline ? `<div class="modal-info-item"><strong>${translations[currentLang].info_outage}:</strong><p>${formatDuration((Date.parse(node.last_checked) - Date.parse(node.stats.timestamp)) / 1000 || 0)}</p></div>` : ''}
 				</div>
 			</div>
 			<div class="chart-grid">

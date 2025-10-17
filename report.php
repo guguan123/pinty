@@ -80,7 +80,7 @@ try {
 	}
 
 	// Update server status to online (DB-specific UPSERT)
-	$serverRepo->updateStatus($server_id, true, time());
+	$serverRepo->updateStatus($server_id, true, date('Y-m-d H:i:s'));
 
 	$pdo->commit();
 
