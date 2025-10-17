@@ -56,7 +56,8 @@ class MonitoringService {
 		foreach ($statuses as $serverId => $isOnline) {
 			if ($isOnline) {
 				$latestStat = $this->serverRepo->getLatestStats()[$serverId] ?? null;
-				if ($latestStat && ($currentTime - (int)$latestStat['timestamp'] > self::OFFLINE_THRESHOLD)) {
+				$latestTimestamp = strtotime($latestStat['timestamp']);
+				if ($latestStat && ($currentTime - $latestTimestamp > self::OFFLINE_THRESHOLD)) {
 					$this->serverRepo->updateStatus($serverId, false, $currentTime);
 					error_log("Server '{$serverId}' marked as offline due to timeout.");
 				}

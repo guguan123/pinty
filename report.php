@@ -53,7 +53,7 @@ try {
 	$stmt_stats = $pdo->prepare($sql_stats);
 	$stmt_stats->execute([
 		$server_id,
-		time(),
+		date('Y-m-d H:i:s'),
 		$input['cpu_usage'] ?? 0,
 		$input['mem_usage_percent'] ?? 0,
 		$input['disk_usage_percent'] ?? 0,

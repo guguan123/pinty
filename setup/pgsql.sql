@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS servers (
 CREATE TABLE IF NOT EXISTS server_stats (
 	id                  SERIAL PRIMARY KEY,
 	server_id           VARCHAR(255) NOT NULL,
-	timestamp           BIGINT NOT NULL,
+	timestamp           TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
 	cpu_usage           REAL,
 	mem_usage_percent   REAL,
 	disk_usage_percent  REAL,

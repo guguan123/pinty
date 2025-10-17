@@ -83,8 +83,8 @@ try {
 			$server['x'] = $server['latitude'];
 			$server['y'] = (float)($server['longitude'] ?? 0);
 			$server['stats'] = $repo->getLatestStats()[$serverId] ?? [];
-			$server['is_online'] = (bool)($online_status[$node_id]['is_online'] ?? false);
-			$server['last_checked'] = $online_status[$node_id]['last_checked'] ?? NULL;
+			$server['is_online'] = (bool)($online_status[$serverId]['is_online'] ?? false);
+			$server['last_checked'] = $online_status[$serverId]['last_checked'] ?? NULL;
 			if (!$server['is_online']) {
 				$server['anomaly_msg'] = '服务器掉线';
 			}

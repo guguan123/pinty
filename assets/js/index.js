@@ -438,6 +438,18 @@ document.addEventListener('DOMContentLoaded', () => {
 		
 		const padding = { top: 10, right: 10, bottom: 20, left: 35 };
 
+		// --- 辅助函数：将 ISO 8601 字符串转换为毫秒时间戳 ---
+		// 假设后端返回的是 YYYY-MM-DD HH:MM:SS 格式。
+		// 使用 new Date(string).getTime() 或 Date.parse(string) 获取毫秒数
+		const parseTime = (timestampStr) => {
+			// 如果后端返回的字符串缺少时区信息，但你知道它是 UTC，可以追加 'Z'
+			// let date = new Date(timestampStr + 'Z'); 
+			
+			// 假设浏览器能正确解析或将其视为本地时间
+			let date = new Date(timestampStr); 
+			return date.getTime(); // 返回毫秒数
+		};
+
 		// FIX: Correctly handle single vs multiple datasets
 		if (Array.isArray(datasets) && datasets.length > 0 && typeof datasets[0].data === 'undefined') {
 			datasets = [{ data: datasets, color: '#ffc107' }];
@@ -448,11 +460,22 @@ document.addEventListener('DOMContentLoaded', () => {
 			return;
 		}
 
+		// --- 转换 X 轴数据为数字时间戳 (毫秒) ---
+		datasets.forEach(dataset => {
+			dataset.data.forEach(point => {
+				// 覆盖原有的字符串 X 值为毫秒时间戳
+				point.x = parseTime(point.x); 
+			});
+		});
+
 		let allYValues = datasets.flatMap(d => d.data.map(p => p.y));
 		const maxY = forceMaxY || Math.max(1, ...allYValues) * 1.2;
+		
+		// --- 使用数字时间戳计算 minX 和 maxX ---
 		const minX = datasets[0].data[0].x;
 		const maxX = datasets[0].data[datasets[0].data.length - 1].x;
 
+		// ... (Y轴 Grid 和 Label 绘制代码不变) ...
 		for (let i = 0; i <= 4; i++) {
 			const y = padding.top + i * (150 - padding.top - padding.bottom) / 4;
 			const line = document.createElementNS(NS, 'line');
@@ -467,6 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			text.textContent = (maxY * (1 - i / 4)).toFixed(forceMaxY === 100 ? 0 : 1);
 			svg.appendChild(text);
 		}
+		// ... (End Y轴 Grid 和 Label 绘制代码) ...
 
 		datasets.forEach(dataset => {
 			if(!dataset.data || dataset.data.length < 2) return;

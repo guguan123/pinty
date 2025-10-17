@@ -60,7 +60,7 @@ class ServerRepository {
 				'net_down_speed' => (int)$record['net_down_speed'],
 				'total_up' => (int)$record['total_up'],
 				'total_down' => (int)$record['total_down'],
-				'timestamp' => (int)$record['timestamp'],
+				'timestamp' => $record['timestamp'],
 				'processes' => (int)$record['processes'],
 				'connections' => (int)$record['connections']
 			];

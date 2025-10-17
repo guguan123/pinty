@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS servers (
 CREATE TABLE IF NOT EXISTS server_stats (
 	id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
 	server_id           VARCHAR(255) NOT NULL,
-	timestamp           BIGINT NOT NULL,
+	timestamp           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	cpu_usage           DOUBLE,
 	mem_usage_percent   DOUBLE,
 	disk_usage_percent  DOUBLE,
