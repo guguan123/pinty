@@ -71,11 +71,14 @@ class ServerRepository {
 	 * 获取所有服务器的在线状态 [id => is_online]
 	 */
 	public function getOnlineStatuses() {
-		$sql = "SELECT id, is_online FROM server_status";
+		$sql = "SELECT * FROM server_status";
 		$statuses = $this->db->fetchAll($sql);
 		$result = [];
 		foreach ($statuses as $status) {
-			$result[$status['id']] = (bool)$status['is_online'];
+			$result[$status['id']] = array(
+				'is_online' => $status['is_online'],
+				'last_checked' => $status['last_checked']
+			);
 		}
 		return $result;
 	}

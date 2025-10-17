@@ -47,7 +47,8 @@ try {
 					'disk_total' => $server['disk_total'],
 					'expiry_date' => $server['expiry_date'] ?? null,
 					'country_code' => $server['country_code'],
-					'is_online' => (bool)($online_status[$node_id] ?? false),
+					'is_online' => (bool)($online_status[$node_id]['is_online'] ?? false),
+					'last_checked' => $online_status[$node_id]['last_checked'] ?? NULL,
 					'stats' => array(
 						'timestamp' => $stats['timestamp'] ?? NULL,
 						'cpu_usage' => $stats['cpu_usage'] ?? NULL,

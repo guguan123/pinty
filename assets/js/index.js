@@ -256,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			const cpu = parseFloat(stats.cpu_usage || 0);
 			const mem = parseFloat(stats.mem_usage_percent || 0);
 			const disk = parseFloat(stats.disk_usage_percent || 0);
-			const uptime = isOffline ? (formatDuration(node.outage_duration || 0)) : (stats.uptime || '...');
+			const uptime = isOffline ? (formatDuration(Date.now() - node.last_checked || 0)) : (stats.uptime || '...');
 
 			card.innerHTML = `
 				<div class="card-header">
