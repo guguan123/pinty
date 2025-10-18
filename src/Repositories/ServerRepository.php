@@ -113,12 +113,14 @@ class ServerRepository {
 	/**
 	 * 获取单个服务器详情。
 	 */
-	public function getServerById($id) {
+	public function getServerById($id , $getSecret = false) {
 		$sql = "SELECT * FROM servers WHERE id = :id LIMIT 1";
 		$params = [':id' => $id];
 		$record = $this->db->fetchAll($sql, $params)[0] ?? NULL;
 
 		if ($record != NULL) {
+			if ($getSecret) return $record;
+
 			return array(
 				'id' => $record['id'],
 				'name' => $record['name'],
@@ -183,7 +185,7 @@ class ServerRepository {
 	 * @throws return
 	 */
 	public function validateServer($serverId, $secret, $requestIp = null) {
-		$server = $this->getServerById($serverId);
+		$server = $this->getServerById($serverId, true);
 		if (!$server) {
 			return array('code' => 404, 'msg' => 'Invalid server_id.');
 		}
