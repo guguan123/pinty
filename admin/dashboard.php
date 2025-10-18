@@ -182,7 +182,7 @@ try {
 						<tr>
 							<td><strong><?php echo htmlspecialchars($server['id']); ?></strong></td>
 							<td><?php echo htmlspecialchars($server['name']); ?></td>
-							<td><?php echo htmlspecialchars($server['tags']); ?></td>
+							<td><?php echo htmlspecialchars($server['tags'] ?? ''); ?></td>
 							<td>
 								<div class="secret-wrapper">
 									<input type="text" id="secret-<?php echo htmlspecialchars($server['id']); ?>" value="<?php echo htmlspecialchars($server['secret']); ?>" readonly>
