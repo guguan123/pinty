@@ -15,15 +15,15 @@
 
 1、打开 admin/ 页面并登录，添加一个新的服务器
 
-2、将信息填入 update.sh ，例如：
+2、通过环境变量传参给脚本
 
 ```bash
 # API端点，用于接收状态报告
-API_ENDPOINT="https://<你的域名>/report.php"
+PINTY_API_ENDPOINT="https://<你的域名>/report.php"
 # 服务器的唯一ID (与管理员后台设置的ID匹配)
-SERVER_ID="10086"
+PINTY_SERVER_ID="10086"
 # 每个服务器独立的密钥 (从管理员后台复制)
-SECRET="a7d23a5ded98c84c06263e237fea4e48"
+PINTY_SECRET="a7d23a5ded98c84c06263e237fea4e48"
 ```
 
 3、运行脚本
@@ -79,5 +79,5 @@ SECRET="a7d23a5ded98c84c06263e237fea4e48"
 
 ## 许可证
 
-除了 index.html、update.sh、edit_server.php、assets/css/admin-dash.css、assets/css/index.css、admin/logout.php、admin/generate_secret.php、admin/dashboard.php
+除了 index.html、edit_server.php、assets/css/admin-dash.css、assets/css/index.css、admin/logout.php、admin/generate_secret.php、admin/dashboard.php
 版权归原作者[Crozono](https://www.nodeloc.com/u/synastie)所有，其余均以 [MIT](https://choosealicense.com/licenses/mit/) 许可证发行
