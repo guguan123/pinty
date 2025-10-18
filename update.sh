@@ -1,134 +1,270 @@
 #!/bin/bash
 
 # ==============================================================================
-# Pinty Monitor Client Script v2.0
+# Pinty Monitor Client Script v2.2 (改进版)
 # ==============================================================================
-# 请在这里配置您的信息
+# 改进点：
+# - 增强了jq的使用，确保所有JSON构建和验证都通过jq处理，避免手动字符串拼接错误。
+# - 改进错误处理，包括命令失败的显式检查和更详细的日志记录。
+# - 安全密钥处理：优先从环境变量读取，如果不存在则回落到配置。
+# - 修复静态信息标志：使用持久文件而不是基于进程的PID标志。
+# - 改进网络接口检测，添加更多回退选项。
+# - 优化性能：例如，使用top获取CPU信息（如果可用），限制ps输出。
+# - 添加退出时的清理陷阱。
+# - 增强日志记录，包含时间戳和日志级别。
+# - 在启动时验证依赖（jq, curl）。
+# - 优雅处理缺失工具（例如，ss vs netstat）。
+
+# 请在此配置您的信息
 # ------------------------------------------------------------------------------
-# API端点，用于接收状态报告
-API_ENDPOINT="https://your-domain.com/report.php"
-# 服务器的唯一ID (与管理员后台设置的ID匹配)
-SERVER_ID="your-server-id"
-# 每个服务器独立的密钥 (从管理员后台复制)
-SECRET="your-secret-key"
+# 报告状态的API端点
+API_ENDPOINT="${PINTY_API_ENDPOINT:-https://your-domain.com/report.php}"
+# 服务器的唯一ID（必须与管理员后台匹配）
+SERVER_ID="${PINTY_SERVER_ID:-your-server-id}"
+# 服务器特定的密钥（从管理员后台复制；优先使用环境变量以提高安全性）
+SECRET="${PINTY_SECRET:-your-secret-key}"
 # ==============================================================================
 
-# 错误报告日志文件
-LOG_FILE="pinty_monitor_client.log"
+# 错误和信息的日志文件
+LOG_FILE="${PINTY_LOG_FILE:-pinty_monitor_client.log}"
+# 静态信息标志文件
+STATIC_FLAG="/tmp/pinty_static_info_done.flag"
+# 报告间隔（秒）
+REPORT_INTERVAL=8
 
-echo "Starting Pinty monitoring script for $SERVER_ID..."
-echo "Reporting to $API_ENDPOINT. Errors will be logged to $LOG_FILE"
+# 日志颜色（可选，用于控制台输出）
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m' # 无颜色
 
-# --- 函数定义 ---
+# 日志记录函数
+log() {
+    local level="$1"
+    shift
+    local msg="$*"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] [$level] $msg" | tee -a "$LOG_FILE"
+    if [[ "$level" == "ERROR" ]]; then
+        echo -e "${RED}[$timestamp] [ERROR] $msg${NC}" >&2
+    fi
+}
 
-# 获取网络使用情况的函数
+# 退出并记录错误
+die() {
+    log "ERROR" "$@"
+    exit 1
+}
+
+# 检查依赖项
+check_deps() {
+    local missing=()
+    for cmd in jq curl; do
+        if ! command -v "$cmd" &> /dev/null; then
+            missing+=("$cmd")
+        fi
+    done
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        die "缺少必需工具: ${missing[*]}。请安装它们。"
+    fi
+    # 如果ss或netstat不可用，警告连接指标将为0
+    if ! command -v ss &> /dev/null && ! command -v netstat &> /dev/null; then
+        log "WARN" "未找到'ss'或'netstat'。连接指标将为0。"
+    fi
+}
+
+# 获取网络使用情况函数（改进错误处理）
 get_network_usage() {
-	INTERFACE=$(ip route | grep '^default' | awk '{print $5}' | head -n 1)
-	if [ -z "$INTERFACE" ]; then
-		if ip link show eth0 > /dev/null 2>&1; then INTERFACE="eth0";
-		elif ip link show venet0 > /dev/null 2>&1; then INTERFACE="venet0"; # For OpenVZ
-		elif ip link show ens3 > /dev/null 2>&1; then INTERFACE="ens3"; # Common alternative
-		else echo "Error: Could not determine a valid network interface." >&2; return 1; fi
-	fi
-	
-	# Check if interface stats exist
-	if [ ! -f "/sys/class/net/$INTERFACE/statistics/rx_bytes" ]; then
-		echo "Error: Statistics not found for interface $INTERFACE." >&2
-		return 1
-	fi
+    local interface rx_bytes tx_bytes rx_start tx_start rx_end tx_end rx_speed tx_speed total_up total_down
 
-	RX_BYTES_START=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
-	TX_BYTES_START=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
-	sleep 1
-	RX_BYTES_END=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
-	TX_BYTES_END=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
+    # 检测主要网络接口
+    interface=$(ip route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev") {print $(i+1); break}}' | head -n 1)
+    if [[ -z "$interface" ]]; then
+        for iface in eth0 venet0 ens3 enp0s3 enp1s0 wlan0; do  # 添加更多常见接口作为回退
+            if ip link show "$iface" &> /dev/null; then
+                interface="$iface"
+                break
+            fi
+        done
+    fi
 
-	RX_SPEED=$((RX_BYTES_END - RX_BYTES_START))
-	TX_SPEED=$((TX_BYTES_END - TX_BYTES_START))
-	TOTAL_UP=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
-	TOTAL_DOWN=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
+    if [[ -z "$interface" ]]; then
+        log "ERROR" "无法确定有效的网络接口。"
+        echo '{"net_up_speed": 0, "net_down_speed": 0, "total_up": 0, "total_down": 0}'
+        return 1
+    fi
 
-	echo "\"net_up_speed\": ${TX_SPEED:-0}, \"net_down_speed\": ${RX_SPEED:-0}, \"total_up\": ${TOTAL_UP:-0}, \"total_down\": ${TOTAL_DOWN:-0}"
+    local stats_rx="/sys/class/net/$interface/statistics/rx_bytes"
+    local stats_tx="/sys/class/net/$interface/statistics/tx_bytes"
+    if [[ ! -r "$stats_rx" || ! -r "$stats_tx" ]]; then
+        log "ERROR" "接口 $interface 的统计信息不可读。"
+        echo '{"net_up_speed": 0, "net_down_speed": 0, "total_up": 0, "total_down": 0}'
+        return 1
+    fi
+
+    rx_start=$(cat "$stats_rx")
+    tx_start=$(cat "$stats_tx")
+    sleep 1
+    rx_end=$(cat "$stats_rx")
+    tx_end=$(cat "$stats_tx")
+
+    rx_speed=$((rx_end - rx_start))
+    tx_speed=$((tx_end - tx_start))
+    total_up=$(cat "$stats_tx")
+    total_down=$(cat "$stats_rx")
+
+    # 以jq兼容的JSON片段输出
+    jq -n \
+        --argjson up_speed "$tx_speed" \
+        --argjson down_speed "$rx_speed" \
+        --argjson total_up "$total_up" \
+        --argjson total_down "$total_down" \
+        '{net_up_speed: $up_speed, net_down_speed: $down_speed, total_up: $total_up, total_down: $total_down}'
 }
 
-# --- 首次运行时获取静态信息 ---
-# 使用一个标志文件来判断是否是首次运行
-FIRST_RUN_FLAG="/tmp/pinty_first_run_$$"
-if [ ! -f "$FIRST_RUN_FLAG" ]; then
-	CPU_MODEL=$(grep 'model name' /proc/cpuinfo | head -n 1 | cut -d ':' -f 2 | sed 's/^[ \t]*//')
-	CPU_CORES=$(nproc)
-	MEM_TOTAL_BYTES=$(free -b | awk 'NR==2{print $2}')
-	DISK_TOTAL_BYTES=$(df -B1 / | awk 'NR==2{print $2}')
-	OS_INFO=$( (lsb_release -ds 2>/dev/null || cat /etc/*-release 2>/dev/null | head -n1 || uname -om) | tr -d '"' )
-	ARCH=$(uname -m)
+# 获取静态信息（仅一次）
+get_static_info() {
+    if [[ -f "$STATIC_FLAG" ]]; then
+        return 0
+    fi
 
-	STATIC_INFO_JSON=$(cat <<EOF
-,
-"static_info": {
-	"cpu_model": "$CPU_MODEL",
-	"cpu_cores": ${CPU_CORES:-0},
-	"mem_total_bytes": ${MEM_TOTAL_BYTES:-0},
-	"disk_total_bytes": ${DISK_TOTAL_BYTES:-0},
-	"system": "$OS_INFO",
-	"arch": "$ARCH"
+    local cpu_model cpu_cores mem_total disk_total os_info arch
+    cpu_model=$(grep '^model name' /proc/cpuinfo 2>/dev/null | head -n1 | cut -d: -f2- | xargs | sed 's/"/\\"/g') || cpu_model="Unknown"
+    cpu_cores=$(nproc 2>/dev/null) || cpu_cores=0
+    mem_total=$(free -b 2>/dev/null | awk 'NR==2{print $2}') || mem_total=0
+    disk_total=$(df -B1 / 2>/dev/null | awk 'NR==2{print $2}') || disk_total=0
+    os_info=$(lsb_release -ds 2>/dev/null || grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"' || uname -oms | tr -d '"') || os_info="Unknown"
+    arch=$(uname -m 2>/dev/null) || arch="Unknown"
+
+    jq -n \
+        --arg cpu_model "$cpu_model" \
+        --argjson cpu_cores "$cpu_cores" \
+        --argjson mem_total "$mem_total" \
+        --argjson disk_total "$disk_total" \
+        --arg os_info "$os_info" \
+        --arg arch "$arch" \
+        '{static_info: {cpu_model: $cpu_model, cpu_cores: $cpu_cores, mem_total_bytes: $mem_total, disk_total_bytes: $disk_total, system: $os_info, arch: $arch}}'
 }
-EOF
-)
-	touch "$FIRST_RUN_FLAG"
-	# 添加一个at job，在脚本退出后一段时间删除标志文件，以备重启
-	echo "rm -f $FIRST_RUN_FLAG" | at now + 5 minutes > /dev/null 2>&1
-else
-	STATIC_INFO_JSON=""
-fi
-# --- 静态信息获取结束 ---
 
-# 主循环
-while true; do
-	CPU_USAGE=$(awk '{u=$2+$4; t=$2+$4+$5; if (NR==1){u1=u; t1=t;} else print ($2+$4-u1) * 100 / (t-t1); }' <(grep 'cpu ' /proc/stat) <(sleep 1;grep 'cpu ' /proc/stat) | awk '{printf "%.2f", $0}')
-	MEM_INFO=$(free | awk 'NR==2{printf "\"mem_usage_percent\": %.2f", $3/$2*100}')
-	DISK_USAGE=$(df / | awk 'NR==2{print $5}' | sed 's/%//')
-	UPTIME=$(uptime -p | sed 's/up //')
-	LOAD_AVG=$(awk '{print $1}' /proc/loadavg)
-	PROCESSES=$(ps -e --no-headers | wc -l)
-	CONNECTIONS=$( (ss -tn | grep -v 'State' | wc -l) || (netstat -nt | grep -v 'State' | wc -l) )
-	
-	NET_USAGE_JSON=$(get_network_usage)
-	if [ $? -ne 0 ]; then
-		NET_USAGE_JSON='"net_up_speed": 0, "net_down_speed": 0, "total_up": 0, "total_down": 0'
-	fi
+# 主要报告函数
+report_status() {
+    local cpu_usage mem_info disk_usage uptime load_avg processes connections net_usage static_info_json
 
-	JSON_PAYLOAD=$(cat <<EOF
-{
-	"server_id": "$SERVER_ID",
-	"secret": "$SECRET",
-	"cpu_usage": ${CPU_USAGE:-0},
-	${MEM_INFO:-"\"mem_usage_percent\": 0"},
-	"disk_usage_percent": ${DISK_USAGE:-0},
-	"uptime": "$UPTIME",
-	"load_avg": ${LOAD_AVG:-0},
-	"processes": ${PROCESSES:-0},
-	"connections": ${CONNECTIONS:-0},
-	${NET_USAGE_JSON}
-	${STATIC_INFO_JSON}
+    # CPU使用率（使用top如果可用，否则回落到awk方法）
+    if command -v top &> /dev/null; then
+        cpu_usage=$(top -bn1 2>/dev/null | grep '^%Cpu' | awk '{print 100 - $8}' | cut -d. -f1) || cpu_usage=0
+    else
+        cpu_usage=$(timeout 2 awk '{u=$2+$4; t=$2+$4+$5; if (NR==1){u1=u; t1=t;} else print int(($2+$4-u1)*100/(t-t1)); }' \
+            <(grep '^cpu ' /proc/stat) \
+            <(sleep 1 && grep '^cpu ' /proc/stat) 2>/dev/null) || cpu_usage=0
+    fi
+    cpu_usage=$(printf "%.2f" "$cpu_usage")
+
+    # 内存使用率
+    mem_info=$(free 2>/dev/null | awk 'NR==2{printf "%.2f", $3/$2*100}') || mem_info=0.00
+
+    # 磁盘使用率
+    disk_usage=$(df / 2>/dev/null | awk 'NR==2{print int($5)}' | sed 's/%//') || disk_usage=0
+
+    # 运行时间
+    uptime=$(uptime -p 2>/dev/null | sed 's/up //; s/ days/d/; s/ day/d/; s/ hours/h/; s/ hour/h/; s/ minutes/m/; s/ minute/m/' || echo "0m")
+
+    # 负载平均值
+    load_avg=$(awk '{print $1}' /proc/loadavg 2>/dev/null) || load_avg=0
+
+    # 进程数（优化：无头ps并计数）
+    processes=$(ps -e --no-headers 2>/dev/null | wc -l) || processes=0
+
+    # 连接数
+    if command -v ss &> /dev/null; then
+        connections=$(ss -tn 2>/dev/null | grep -c -v '^State')  # 使用-c计数以优化
+    elif command -v netstat &> /dev/null; then
+        connections=$(netstat -nt 2>/dev/null | grep -c -v '^tcp\|^udp')
+    else
+        connections=0
+    fi
+
+    # 网络使用情况
+    net_usage=$(get_network_usage)
+
+    # 静态信息（仅首次运行）
+    if [[ ! -f "$STATIC_FLAG" ]]; then
+        static_info_json=$(get_static_info)
+        touch "$STATIC_FLAG"
+        log "INFO" "静态信息已收集并设置标志。"
+    else
+        static_info_json='{}'
+    fi
+
+    # 使用jq构建JSON负载
+    local json_payload
+    json_payload=$(jq -n \
+        --arg server_id "$SERVER_ID" \
+        --arg secret "$SECRET" \
+        --argjson cpu_usage "$cpu_usage" \
+        --argjson mem_usage "$mem_info" \
+        --argjson disk_usage "$disk_usage" \
+        --arg uptime "$uptime" \
+        --argjson load_avg "$load_avg" \
+        --argjson processes "$processes" \
+        --argjson connections "$connections" \
+        --slurpfile net_usage <(echo "$net_usage") \
+        --slurpfile static_info <(echo "$static_info_json") \
+        '{
+            server_id: $server_id,
+            secret: $secret,
+            cpu_usage: $cpu_usage,
+            mem_usage_percent: $mem_usage,
+            disk_usage_percent: $disk_usage,
+            uptime: $uptime,
+            load_avg: $load_avg,
+            processes: $processes,
+            connections: $connections
+        } + $net_usage[0] + $static_info[0]')
+
+    if [[ $? -ne 0 || -z "$json_payload" ]]; then
+        log "ERROR" "构建JSON负载失败。"
+        return 1
+    fi
+
+    # 发送报告（保持原curl方式，但添加超时以防挂起）
+    local http_response http_status http_body
+    http_response=$(curl --write-out "HTTPSTATUS:%{http_code}" \
+        --silent --fail --show-error \
+        --connect-timeout 10 --max-time 30 \
+        -X POST -H "Content-Type: application/json" \
+        -d "$json_payload" \
+        "$API_ENDPOINT" 2>&1)
+
+    http_status=$(echo "$http_response" | sed -n 's/.*HTTPSTATUS:\([0-9][0-9][0-9]\).*/\1/p')
+    http_body=$(echo "$http_response" | sed 's/HTTPSTATUS\:.*//g' | tr -d '\n')
+
+    if [[ "$http_status" != "200" ]]; then
+        log "ERROR" "报告数据失败。状态: $http_status, 响应: $http_body"
+        return 1
+    else
+        log "INFO" "报告发送成功。状态: $http_status"
+    fi
 }
-EOF
-)
-	
-	# 首次报告后，不再发送静态信息以节省带宽
-	STATIC_INFO_JSON=""
 
-	HTTP_RESPONSE=$(curl --write-out "HTTPSTATUS:%{http_code}" -s -X POST -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "$API_ENDPOINT")
+# 主脚本
+main() {
+    log "INFO" "启动Pinty监控脚本，服务器ID: $SERVER_ID..."
+    log "INFO" "报告到 $API_ENDPOINT。日志在 $LOG_FILE。间隔: ${REPORT_INTERVAL}s"
 
-	echo $HTTP_RESPONSE
+    check_deps
 
-	HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
-	HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
-	
-	if [ "$HTTP_STATUS" -ne 200 ]; then
-		ERROR_MSG="[$(date)] - Failed to report data. Status: $HTTP_STATUS, Response: $HTTP_BODY"
-		echo "$ERROR_MSG" >&2
-		echo "$ERROR_MSG" >> "$LOG_FILE"
-	fi
+    # 陷阱用于清理（例如，中断时记录）
+    trap 'log "INFO" "脚本中断。优雅退出。"; exit 0' INT TERM
 
-	sleep 8 # sleep 8s + 1s from network = 9s interval
-done
+    # 主循环
+    while true; do
+        if ! report_status; then
+            sleep 10  # 错误时延长睡眠以避免频繁尝试
+        else
+            sleep "$REPORT_INTERVAL"
+        fi
+    done
+}
+
+# 运行主函数
+main "$@"
