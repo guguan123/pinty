@@ -1,12 +1,11 @@
 <?php
-// edit_server.php - Handles updating server data
+// edit_server.php - 意义不明的文件，先暂时保留
 
-// 在这里加入你的身份验证逻辑 (例如检查 session/cookie)，确保只有管理员才能访问此脚本
-// if (!is_admin()) {
-//     http_response_code(403);
-//     echo json_encode(['error' => 'Permission denied']);
-//     exit;
-// }
+if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
+	http_response_code(403);
+	echo json_encode(['error' => 'Permission denied']);
+	exit;
+}
 
 header('Content-Type: application/json');
 require_once __DIR__ . '/config.php';

@@ -137,7 +137,7 @@ if ($success) {
 			<button type="submit">下一步：生成配置</button>
 		</form>
 	<?php elseif ($step === 2): ?>
-		<p>正在安装... 请稍候。</p>
+		<p>确认安装</p>
 		<form method="POST">
 			<button type="submit">执行安装</button>
 		</form>
