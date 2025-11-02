@@ -50,8 +50,8 @@ CREATE TABLE IF NOT EXISTS server_status (
 CREATE TABLE IF NOT EXISTS outages (
 	id          BIGINT AUTO_INCREMENT PRIMARY KEY,
 	server_id   VARCHAR(255) NOT NULL,
-	start_time  BIGINT,
-	end_time    BIGINT,
+	start_time  DATETIME DEFAULT CURRENT_TIMESTAMP,
+	end_time    DATETIME DEFAULT NULL,
 	title       VARCHAR(255),
 	content     TEXT,
 	INDEX idx_outages_server_start (server_id, start_time)

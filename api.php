@@ -23,6 +23,10 @@ try {
 	switch ($section) {
 		case 'web-info':
 			$response['site_name'] = $settingsRepo->getSetting('site_name') ?: NULL;
+			$response = array(
+				'site_name' => $settingsRepo->getSetting('site_name') ?: NULL,
+				'timezone' => date_default_timezone_get()
+			);
 			break;
 
 		case 'list':
@@ -35,7 +39,7 @@ try {
 			foreach ($servers as $server) {
 				$node_id = $server['id'];
 				$stats = $latest_stats[$node_id] ?? NULL;
-				
+
 				$node = array(
 					'id' => $server['id'],
 					'name' => $server['name'],

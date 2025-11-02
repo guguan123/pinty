@@ -1,3 +1,4 @@
+const { Temporal } = window.temporal;
 document.addEventListener('DOMContentLoaded', () => {
 	/* -------------------- 数据与状态区 -------------------- */
 	// 后端原始数据
@@ -7,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	// 当前视图按钮
 	let activeButton = document.querySelector('.controls button[data-view="map"]');
 	// 当前语言
-	let currentLang = 'zh';
+	let currentLang = 'zh-CN';
 	// 已选标签
 	let activeTags = new Set();
 	// 卡片分页当前页
@@ -17,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 	/* 多语言文案 – 键名即 data-lang 属性值 */
 	const translations = {
-		en: {
+		'en': {
 			title: 'Pinty Monitor', btn_map: 'Global Map', btn_standalones: 'Server Cards', btn_outages: 'Recent Outages',
 			footer_suffix: 'Updates every 10 seconds.', error_loading: 'Failed to load data:', error_api_status: 'API returned status',
 			error_api_error: 'API Error:', stat_cpu: 'CPU', stat_mem: 'Memory', stat_disk: 'Disk', stat_net: 'Network',
@@ -30,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			info_system: 'System', info_arch: 'Architecture', info_cpu: 'CPU Model', info_ram: 'RAM Size',
 			info_disk: 'Disk Size', info_outage: 'Outage Duration', loading_charts: 'Loading charts...'
 		},
-		zh: {
+		'zh-CN': {
 			title: 'Pinty 监控', btn_map: '全球地图', btn_standalones: '独立服务器视图', btn_outages: '最近的掉线记录',
 			footer_suffix: '每10秒更新.', error_loading: '无法加载数据:', error_api_status: 'API 返回状态', error_api_error: 'API 错误:',
 			stat_cpu: 'CPU', stat_mem: '内存', stat_disk: '硬盘', stat_net: '网络', stat_traffic: '流量', stat_load: '负载', stat_uptime: '在线',
@@ -120,7 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
 				document.getElementById('copyright-footer').textContent = `Copyright 2025 ${webInfoData.site_name}. Powered by Pinty.`;
 			}
 		} catch (error) {
-			console.error("获取设置信息失败: ", error);
+			console.error("获取网站设置失败: ", error);
 			displayError(error.message);
 		}
 	}
@@ -324,14 +325,17 @@ document.addEventListener('DOMContentLoaded', () => {
 			// 生成节点名称：如果找到节点，使用国旗 Emoji + 名称
 			const nodeName = `${getFlagEmoji(outage.country_code)} ${outage.server_name}`;
 			
-			// 格式化开始时间为本地化字符串（中文使用 'zh-CN' 格式，其他语言默认）
-			const startTime = new Date(outage.start_time * 1000).toLocaleString(currentLang.startsWith('zh') ? 'zh-CN' : undefined);
-			
+			// 将服务器传来的时间添加上时区并转换到本地时区
+			const startTime = Temporal.PlainDateTime.from(outage.start_time)
+				.toZonedDateTime(webInfoData.timezone)
+				.withTimeZone(Temporal.Now.timeZoneId())
+				.toLocaleString(currentLang);
+
 			// 初始化内容为事件描述
 			let content = outage.content;
 			// 如果事件已恢复（有 end_time），追加恢复提示和持续时间
 			if (outage.end_time) {
-				content += `<br>${translations[currentLang].outages_recovered} ${formatDuration(outage.end_time - outage.start_time)}.`;
+				content += `<br>${translations[currentLang].outages_recovered} ${formatDuration((Date.parse(outage.end_time) - Date.parse(outage.start_time)) / 1000)}.`;
 			}
 			
 			// 构建时间线项 HTML：添加 'critical' 类如果未恢复（用于 CSS 标红）
@@ -635,7 +639,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 	/* -------------------- 首次初始化 -------------------- */
-	const savedLang = localStorage.getItem('pintyLang') || 'zh';
+	const savedLang = localStorage.getItem('pintyLang') || 'zh-CN';
 	setLanguage(savedLang);
 	startIntervals(); // 拉数据 + 启动动画
 	fetchWebInfoData();

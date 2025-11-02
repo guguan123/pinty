@@ -22,14 +22,7 @@ class OutagesRepository {
 				FROM outages o 
 				JOIN servers s ON o.server_id = s.id 
 				ORDER BY o.start_time DESC LIMIT {$limit}";
-		$outages = $this->db->fetchAll($sql);
-
-		// 类型转换：时间戳转为int
-		return array_map(function($outage) {
-			$outage['start_time'] = (int)$outage['start_time'];
-			$outage['end_time'] = $outage['end_time'] ? (int)$outage['end_time'] : null;
-			return $outage;
-		}, $outages);
+		return $this->db->fetchAll($sql);
 	}
 
 	/**
@@ -43,7 +36,7 @@ class OutagesRepository {
 		$sql = "INSERT INTO outages (server_id, start_time, title, content) VALUES (:server_id, :start_time, :title, :content)";
 		$params = [
 			':server_id' => $serverId,
-			':start_time' => time(),
+			':start_time' => date('Y-m-d H:i:s'),
 			':title' => $title,
 			':content' => $content
 		];
@@ -56,12 +49,12 @@ class OutagesRepository {
 	/**
 	 * 更新故障记录的结束时间（服务器恢复时调用）。
 	 * @param int $outageId 故障记录ID
-	 * @param int $endTime 结束时间戳
+	 * @param int $endTime 结束时间
 	 * @return bool 更新成功返回true
 	 */
 	public function updateOutageEndTime($outageId, $endTime) {
 		$sql = "UPDATE outages SET end_time = :end_time WHERE id = :id AND end_time IS NULL";
-		$params = [':end_time' => $endTime ?? time(), ':id' => $outageId];
+		$params = [':end_time' => $endTime ?? date('Y-m-d H:i:s'), ':id' => $outageId];
 		return $this->db->execute($sql, $params) > 0;
 	}
 
@@ -74,11 +67,6 @@ class OutagesRepository {
 		$sql = "SELECT * FROM outages WHERE server_id = :server_id AND end_time IS NULL ORDER BY start_time DESC LIMIT 1";
 		$params = [':server_id' => $serverId];
 		$outage = $this->db->fetchAll($sql, $params)[0] ?? null;
-		
-		if ($outage) {
-			$outage['start_time'] = (int)$outage['start_time'];
-		}
-		
 		return $outage;
 	}
 }

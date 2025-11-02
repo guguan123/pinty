@@ -13,22 +13,22 @@ class MonitoringService {
 	private ServerRepository $serverRepo;
 	private OutagesRepository $outagesRepo;
 	private SettingsRepository $settingsRepo;
-	private bool $enabledPush;
-	private string $botToken;
-	private string $chatId;
+	private bool $enabledTelegramPush;
+	private string $telegramBotToken;
+	private string $telegramChatId;
 
 	public function __construct(array $dbConfig) {
 		$this->serverRepo = new ServerRepository($dbConfig);
 		$this->outagesRepo = new OutagesRepository($dbConfig);
 		$this->settingsRepo = new SettingsRepository($dbConfig);
 
-		$this->enabledPush = (bool) $this->settingsRepo->getSetting('telegram_enabled');
-		if ($this->enabledPush) {
-			$this->botToken = $this->settingsRepo->getSetting('telegram_bot_token') ?? '';
-			$this->chatId = $this->settingsRepo->getSetting('telegram_chat_id') ?? '';
-			if (empty($this->botToken) || empty($this->chatId)) {
+		$this->enabledTelegramPush = (bool) $this->settingsRepo->getSetting('telegram_enabled');
+		if ($this->enabledTelegramPush) {
+			$this->telegramBotToken = $this->settingsRepo->getSetting('telegram_bot_token') ?? '';
+			$this->telegramChatId = $this->settingsRepo->getSetting('telegram_chat_id') ?? '';
+			if (empty($this->telegramBotToken) || empty($this->telegramChatId)) {
 				//error_log('Telegram bot token or chat ID is not configured.');
-				$this->enabledPush = false; // 禁用推送
+				$this->enabledTelegramPush = false; // 禁用推送
 			}
 		}
 	}
@@ -70,7 +70,7 @@ class MonitoringService {
 	 * 3. 状态发生「离线→在线」或「在线→离线」切换时，才写库 + 发通知，避免重复打扰。
 	 * 4. 离线→在线：计算本次离线持续时长，更新故障记录的 end_time，发恢复通知。
 	 * 5. 在线→离线：新建一条故障记录，发离线警告。
-	 * 6. 通知渠道可插拔，目前只实现 Telegram；$this->enabledPush 为总开关。
+	 * 6. 通知渠道可插拔，目前只实现 Telegram；$this->enabledTelegramPush 为总开关。
 	 */
 	public function processOutagesAndNotifications(): void {
 		/* 1. 批量获取服务器列表与实时在线状态（内存中操作，减少 I/O） */
@@ -93,7 +93,7 @@ class MonitoringService {
 					);
 
 					/* 推送开关打开时，发离线警告 */
-					if ($this->enabledPush) {
+					if ($this->enabledTelegramPush) {
 						$message = "🔴 *服务离线警告*\n\n"
 								. "服务器 `{$server['name']}` (`{$server['id']}`) 已停止响应。";
 						$this->sendTelegramMessage($message);
@@ -105,15 +105,17 @@ class MonitoringService {
 			else {
 				/* 若存在未结束的故障，说明刚刚恢复，需要“收尾” */
 				if ($activeOutage) {
-					$endTime     = time();  // 恢复时间戳
-					$duration    = $endTime - $activeOutage['start_time']; // 持续秒数
-					$durationStr = $this->formatDuration($duration);       // 格式化为人类可读
+					$endDT = new DateTime('now');         // 当前时间
+					$startDT = new DateTime($activeOutage['start_time']);
+
+					$duration    = abs($endDT->getTimestamp() - $startDT->getTimestamp());
+					$durationStr = $this->formatDuration($duration);
 
 					/* 更新故障记录的结束时间 */
-					$this->outagesRepo->updateOutageEndTime($activeOutage['id'], $endTime);
+					$this->outagesRepo->updateOutageEndTime($activeOutage['id'], $endDT->format('Y-m-d H:i:s'));
 
 					/* 推送开关打开时，发恢复通知 */
-					if ($this->enabledPush) {
+					if ($this->enabledTelegramPush) {
 						$message = "✅ *服务恢复通知*\n\n"
 								. "服务器 `{$server['name']}` (`{$server['id']}`) 已恢复在线。\n"
 								. "持续离线时间：约 {$durationStr}。";
@@ -131,9 +133,9 @@ class MonitoringService {
 	 * @return bool 是否发送成功
 	 */
 	private function sendTelegramMessage(string $message): bool {
-		$url = "https://api.telegram.org/bot{$this->botToken}/sendMessage";
+		$url = "https://api.telegram.org/bot{$this->telegramBotToken}/sendMessage";
 		$data = [
-			'chat_id' => $this->chatId,
+			'chat_id' => $this->telegramChatId,
 			'text' => $message,
 			'parse_mode' => 'Markdown'
 		];

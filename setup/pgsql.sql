@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS server_status (
 CREATE TABLE IF NOT EXISTS outages (
 	id          SERIAL PRIMARY KEY,
 	server_id   VARCHAR(255) NOT NULL,
-	start_time  BIGINT,
-	end_time    BIGINT,
+	start_time  TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+	end_time    TIMESTAMP WITHOUT TIME ZONE,
 	title       VARCHAR(255),
 	content     TEXT
 );

@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS server_status (
 CREATE TABLE IF NOT EXISTS outages (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	server_id   TEXT NOT NULL,
-	start_time  INTEGER,
-	end_time    INTEGER,
+	start_time  TEXT,
+	end_time    TEXT,
 	title       TEXT,
 	content     TEXT
 );
