@@ -22,7 +22,7 @@ class MonitoringService {
 		$this->outagesRepo = new OutagesRepository($dbConfig);
 		$this->settingsRepo = new SettingsRepository($dbConfig);
 
-		$this->enabledTelegramPush = (bool) $this->settingsRepo->getSetting('telegram_enabled');
+		$this->enabledTelegramPush = (bool)$this->settingsRepo->getSetting('telegram_enabled');
 		if ($this->enabledTelegramPush) {
 			$this->telegramBotToken = $this->settingsRepo->getSetting('telegram_bot_token') ?? '';
 			$this->telegramChatId = $this->settingsRepo->getSetting('telegram_chat_id') ?? '';
@@ -83,7 +83,7 @@ class MonitoringService {
 			$activeOutage      = $this->outagesRepo->getActiveOutageForServer($server['id']); // 未结束的故障
 
 			/* 2.1 当前离线 */
-			if ($isCurrentlyOnline != 1) {
+			if ($isCurrentlyOnline['is_online'] != 1) {
 				/* 如果还没有未结束的故障，则新建一条 */
 				if (!$activeOutage) {
 					$this->outagesRepo->createOutage(
@@ -94,19 +94,16 @@ class MonitoringService {
 
 					/* 推送开关打开时，发离线警告 */
 					if ($this->enabledTelegramPush) {
-						$message = "🔴 *服务离线警告*\n\n"
-								. "服务器 `{$server['name']}` (`{$server['id']}`) 已停止响应。";
-						$this->sendTelegramMessage($message);
+						$this->sendTelegramMessage("🔴 *服务离线警告*\n\n"
+						                         . "服务器 `{$server['name']}` (`{$server['id']}`) 已停止响应。");
 					}
 				}
 				/* 如果已存在未结束故障，说明早已记录，无需重复操作 */
-			}
-			/* 2.2 当前在线 */
-			else {
+			} else {
 				/* 若存在未结束的故障，说明刚刚恢复，需要“收尾” */
 				if ($activeOutage) {
-					$endDT = new DateTime('now');         // 当前时间
-					$startDT = new DateTime($activeOutage['start_time']);
+					$endDT = new \DateTime('now');         // 当前时间
+					$startDT = new \DateTime($activeOutage['start_time']);
 
 					$duration    = abs($endDT->getTimestamp() - $startDT->getTimestamp());
 					$durationStr = $this->formatDuration($duration);
@@ -116,10 +113,9 @@ class MonitoringService {
 
 					/* 推送开关打开时，发恢复通知 */
 					if ($this->enabledTelegramPush) {
-						$message = "✅ *服务恢复通知*\n\n"
-								. "服务器 `{$server['name']}` (`{$server['id']}`) 已恢复在线。\n"
-								. "持续离线时间：约 {$durationStr}。";
-						$this->sendTelegramMessage($message);
+						$this->sendTelegramMessage("✅ *服务恢复通知*\n\n"
+						                         . "服务器 `{$server['name']}` (`{$server['id']}`) 已恢复在线。\n"
+						                         . "持续离线时间：约 {$durationStr}。");
 					}
 				}
 				/* 若不存在未结束故障，说明一直正常，无需任何操作 */
