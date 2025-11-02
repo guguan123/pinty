@@ -381,37 +381,36 @@ document.addEventListener('DOMContentLoaded', () => {
 	/** 打开弹窗 -> 拉取历史 -> 绘制 SVG 折线 */
 	async function showDetailsModal(serverId) {
 		const node = monitorData.nodes.find(n => n.id == serverId);
-		if (!node) return;
-		const modalBody = document.getElementById('modal-body');
 		const isOffline = !node.is_online;
-		
-		modalBody.innerHTML = `
-			<div class="modal-header"><h2>${getFlagEmoji(node.country_code)} ${node.name}</h2></div>
-			<div class="modal-info-section">
-					<div class="modal-info-item"><strong>${translations[currentLang].modal_intro}:</strong><p>${node.intro || 'N/A'}</p></div>
-					<div class="info-grid">
-					<div class="modal-info-item"><strong>${translations[currentLang].info_system}:</strong><p>${node.system || 'N/A'}</p></div>
-					<div class="modal-info-item"><strong>${translations[currentLang].info_arch}:</strong><p>${node.arch || 'N/A'}</p></div>
-					<div class="modal-info-item"><strong>${translations[currentLang].info_cpu}:</strong><p>${node.cpu_model || 'N/A'}</p></div>
-					<div class="modal-info-item"><strong>${translations[currentLang].info_ram}:</strong><p>${formatBytes(node.mem_total, 2) || 'N/A'}</p></div>
-					<div class="modal-info-item"><strong>${translations[currentLang].info_disk}:</strong><p>${formatBytes(node.disk_total, 2) || 'N/A'}</p></div>
-					${isOffline ? `<div class="modal-info-item"><strong>${translations[currentLang].info_outage}:</strong><p>${formatDuration((Date.parse(node.last_checked) - Date.parse(node.stats.timestamp)) / 1000 || 0)}</p></div>` : ''}
-				</div>
-			</div>
-			<div class="chart-grid">
-				<div class="chart-container"><h3>${translations[currentLang].modal_cpu_chart}</h3><div id="cpu-chart" class="chart-svg">${translations[currentLang].loading_charts}</div></div>
-				<div class="chart-container"><h3>${translations[currentLang].modal_mem_chart}</h3><div id="mem-chart" class="chart-svg">${translations[currentLang].loading_charts}</div></div>
-				<div class="chart-container"><h3>${translations[currentLang].modal_load_chart}</h3><div id="load-chart" class="chart-svg">${translations[currentLang].loading_charts}</div></div>
-				<div class="chart-container"><h3>${translations[currentLang].modal_net_chart}</h3><div id="net-chart" class="chart-svg">${translations[currentLang].loading_charts}</div></div>
-				<div class="chart-container"><h3>${translations[currentLang].modal_proc_chart}</h3><div id="proc-chart" class="chart-svg">${translations[currentLang].loading_charts}</div></div>
-				<div class="chart-container"><h3>${translations[currentLang].modal_conn_chart}</h3><div id="conn-chart" class="chart-svg">${translations[currentLang].loading_charts}</div></div>
-			</div>`;
-		modalOverlay.classList.add('active');
 
 		try {
 			const response = await fetch(`./api.php?action=server&id=${serverId}`);
 			const data = await response.json();
 			if (data.error) throw new Error(data.error);
+
+			const modalBody = document.getElementById('modal-body');
+			modalBody.innerHTML = `
+				<div class="modal-header"><h2>${getFlagEmoji(data.node.country_code)} ${data.node.name}</h2></div>
+				<div class="modal-info-section">
+						<div class="modal-info-item"><strong>${translations[currentLang].modal_intro}:</strong><p>${data.node?.intro || 'N/A'}</p></div>
+						<div class="info-grid">
+						<div class="modal-info-item"><strong>${translations[currentLang].info_system}:</strong><p>${data.node?.system || 'N/A'}</p></div>
+						<div class="modal-info-item"><strong>${translations[currentLang].info_arch}:</strong><p>${data.node?.arch || 'N/A'}</p></div>
+						<div class="modal-info-item"><strong>${translations[currentLang].info_cpu}:</strong><p>${data.node?.cpu_model || 'N/A'}</p></div>
+						<div class="modal-info-item"><strong>${translations[currentLang].info_ram}:</strong><p>${formatBytes(data.node?.mem_total, 2) || 'N/A'}</p></div>
+						<div class="modal-info-item"><strong>${translations[currentLang].info_disk}:</strong><p>${formatBytes(data.node?.disk_total, 2) || 'N/A'}</p></div>
+						${isOffline ? `<div class="modal-info-item"><strong>${translations[currentLang].info_outage}:</strong><p>${formatDuration((Date.parse(data.node.last_checked) - Date.parse(data.node.stats.timestamp)) / 1000 || 0)}</p></div>` : ''}
+					</div>
+				</div>
+				<div class="chart-grid">
+					<div class="chart-container"><h3>${translations[currentLang].modal_cpu_chart}</h3><div id="cpu-chart" class="chart-svg">${translations[currentLang].loading_charts}</div></div>
+					<div class="chart-container"><h3>${translations[currentLang].modal_mem_chart}</h3><div id="mem-chart" class="chart-svg">${translations[currentLang].loading_charts}</div></div>
+					<div class="chart-container"><h3>${translations[currentLang].modal_load_chart}</h3><div id="load-chart" class="chart-svg">${translations[currentLang].loading_charts}</div></div>
+					<div class="chart-container"><h3>${translations[currentLang].modal_net_chart}</h3><div id="net-chart" class="chart-svg">${translations[currentLang].loading_charts}</div></div>
+					<div class="chart-container"><h3>${translations[currentLang].modal_proc_chart}</h3><div id="proc-chart" class="chart-svg">${translations[currentLang].loading_charts}</div></div>
+					<div class="chart-container"><h3>${translations[currentLang].modal_conn_chart}</h3><div id="conn-chart" class="chart-svg">${translations[currentLang].loading_charts}</div></div>
+				</div>`;
+			modalOverlay.classList.add('active');
 
 			const history = data.node.history || [];
 			createSvgChart('cpu-chart', history.map(h => ({ x: h.timestamp, y: h.cpu_usage })), 100);
