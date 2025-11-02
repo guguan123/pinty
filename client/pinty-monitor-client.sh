@@ -26,9 +26,9 @@ SECRET="${PINTY_SECRET:-your-secret-key}"
 # ==============================================================================
 
 # 错误和信息的日志文件
-LOG_FILE="${PINTY_LOG_FILE:-pinty_monitor_client.log}"
-# 静态信息标志文件
-STATIC_FLAG="/tmp/pinty_static_info_done.flag"
+LOG_FILE="${PINTY_LOG_FILE:-/tmp/pinty_monitor_client.log}"
+# 静态信息标志变量
+STATIC_FLAG=0
 # 报告间隔（秒）
 REPORT_INTERVAL=8
 
@@ -123,10 +123,6 @@ get_network_usage() {
 
 # 获取静态信息（仅一次）
 get_static_info() {
-    if [[ -f "$STATIC_FLAG" ]]; then
-        return 0
-    fi
-
     local cpu_model cpu_cores mem_total disk_total os_info arch
     cpu_model=$(grep '^model name' /proc/cpuinfo 2>/dev/null | head -n1 | cut -d: -f2- | xargs | sed 's/"/\\"/g') || cpu_model="Unknown"
     cpu_cores=$(nproc 2>/dev/null) || cpu_cores=0
@@ -187,9 +183,9 @@ report_status() {
     net_usage=$(get_network_usage)
 
     # 静态信息（仅首次运行）
-    if [[ ! -f "$STATIC_FLAG" ]]; then
+    if [[ "$STATIC_FLAG" != 1 ]]; then
         static_info_json=$(get_static_info)
-        touch "$STATIC_FLAG"
+        STATIC_FLAG=1
         log "INFO" "静态信息已收集并设置标志。"
     else
         static_info_json='{}'
@@ -200,6 +196,7 @@ report_status() {
     json_payload=$(jq -n \
         --arg server_id "$SERVER_ID" \
         --arg secret "$SECRET" \
+        --arg report_interval "$REPORT_INTERVAL"\
         --argjson cpu_usage "$cpu_usage" \
         --argjson mem_usage "$mem_info" \
         --argjson disk_usage "$disk_usage" \
@@ -212,6 +209,7 @@ report_status() {
         '{
             server_id: $server_id,
             secret: $secret,
+            report_interval: $report_interval,
             cpu_usage: $cpu_usage,
             mem_usage_percent: $mem_usage,
             disk_usage_percent: $disk_usage,
@@ -254,7 +252,7 @@ main() {
     check_deps
 
     # 陷阱用于清理（例如，中断时记录）
-    trap 'log "INFO" "脚本中断。优雅退出。"; exit 0' INT TERM
+    trap 'log "INFO" "脚本中断退出。"; exit 0' INT TERM
 
     # 主循环
     while true; do
